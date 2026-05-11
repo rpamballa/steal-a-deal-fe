@@ -285,6 +285,25 @@ button {
   gap: 0.45rem;
 }
 
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.inline-actions {
+  margin-top: 0.9rem;
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
 .field span {
   color: #9db5d1;
   font-size: 0.82rem;
@@ -293,8 +312,15 @@ button {
   letter-spacing: 0.08em;
 }
 
+.field-hint {
+  color: #a8bfd8;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.15);
   border-radius: 14px;
@@ -303,12 +329,30 @@ button {
   color: #edf4ff;
 }
 
+.field textarea {
+  resize: vertical;
+  min-height: 180px;
+}
+
 .field input::placeholder {
   color: #6f87a1;
 }
 
 .field.compact input[type="range"] {
   padding: 0.6rem 0;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: #d7e3ef;
+  min-height: 52px;
+}
+
+.checkbox-field input {
+  width: 18px;
+  height: 18px;
 }
 
 .chip-row {
@@ -601,6 +645,16 @@ button {
   gap: 0.6rem;
 }
 
+.inline-fields {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+}
+
+.data-table td input {
+  width: 100%;
+}
+
 .deal-stage-pill {
   border-radius: 999px;
   padding: 0.45rem 0.8rem;
@@ -618,6 +672,44 @@ button {
 .compact-button {
   padding: 0.55rem 0.8rem;
   border-radius: 10px;
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.status-tile {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.status-tile.active {
+  border-color: rgba(22, 163, 74, 0.35);
+  background: rgba(20, 83, 45, 0.28);
+}
+
+.blocker-item,
+.activity-card,
+.empty-inline {
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.blocker-item {
+  color: #ffd8a8;
+}
+
+.activity-card {
+  display: grid;
+  gap: 0.3rem;
 }
 
 .detail-stack {
@@ -666,7 +758,9 @@ button {
 
   .listing-toolbar,
   .listing-grid,
-  .deal-room-grid {
+  .deal-room-grid,
+  .form-grid,
+  .readiness-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
