@@ -99,6 +99,48 @@ button {
   font-weight: 700;
 }
 
+.auth-panel {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.auth-panel-title {
+  margin: 0;
+  color: #a8bfd8;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.auth-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+
+.auth-register {
+  display: grid;
+  gap: 0.55rem;
+  padding-top: 0.7rem;
+}
+
+.ghost-button {
+  border: 0;
+  background: transparent;
+  color: #a8bfd8;
+  padding: 0.4rem 0;
+  text-align: left;
+}
+
+.auth-error {
+  margin: 0;
+  color: #ffb4a5;
+  font-size: 0.85rem;
+}
+
 .panel,
 .summary-box,
 .vehicle-summary,
@@ -639,7 +681,8 @@ button {
 }
 
 .deal-stage-strip,
-.document-actions {
+.document-actions,
+.button-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;

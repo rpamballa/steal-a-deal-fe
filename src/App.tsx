@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 
 import {
   api,
+  setAuthToken,
   type Appointment,
   type CreateVehicleRequest,
   type CurrentUser,
@@ -19,9 +20,11 @@ import {
   type Dashboard,
   type DocumentStatus,
   type InventoryUploadMode,
+  type InventoryUploadResponse,
   type Lead,
   type Notification,
   type ParticipantInbox,
+  type ParticipantType,
   type PortalAppointmentItem,
   type PortalDealItem,
   type PortalDocumentItem,
@@ -30,6 +33,7 @@ import {
   type PortalSubscription,
   type SubscriptionPlan,
   type SubscriptionStatus,
+  type UserRole,
   type Vehicle,
 } from './api';
 
@@ -50,15 +54,15 @@ type AsyncState<T> = {
   refresh: () => Promise<void>;
 };
 
-const navItems: Array<{id: NavView; label: string}> = [
+const navItems: Array<{id: NavView; label: string; roles?: Array<CurrentUser['role']>}> = [
   {id: 'overview', label: 'Overview'},
   {id: 'inventory', label: 'Inventory'},
-  {id: 'vehicle', label: 'Vehicle Detail'},
-  {id: 'deal-room', label: 'Deal Room'},
-  {id: 'leads', label: 'Leads'},
-  {id: 'appointments', label: 'Appointments'},
-  {id: 'dealers', label: 'Dealers'},
-  {id: 'reporting', label: 'Reporting'},
+  {id: 'vehicle', label: 'Vehicle Detail', roles: ['BUYER', 'ADMIN']},
+  {id: 'deal-room', label: 'Deal Room', roles: ['BUYER', 'DEALER', 'ADMIN']},
+  {id: 'leads', label: 'Leads', roles: ['DEALER', 'ADMIN']},
+  {id: 'appointments', label: 'Appointments', roles: ['DEALER', 'ADMIN']},
+  {id: 'dealers', label: 'Dealers', roles: ['ADMIN']},
+  {id: 'reporting', label: 'Reporting', roles: ['DEALER', 'ADMIN']},
 ];
 
 const dealStages: DealStage[] = [
@@ -75,6 +79,12 @@ const dealStages: DealStage[] = [
 const subscriptionPlans: SubscriptionPlan[] = ['STARTER', 'GROWTH', 'PERFORMANCE'];
 const subscriptionStatuses: SubscriptionStatus[] = ['TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELED'];
 
+const demoAccounts = [
+  {label: 'Admin', email: 'admin@stealadeal.local', password: 'Admin123!'},
+  {label: 'Dealer', email: 'dealer1@stealadeal.local', password: 'Dealer123!'},
+  {label: 'Buyer', email: 'jordan@example.com', password: 'Buyer123!'},
+];
+
 export default function App() {
   const [activeView, setActiveView] = useState<NavView>('overview');
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
@@ -83,6 +93,16 @@ export default function App() {
   const [maxListingPrice, setMaxListingPrice] = useState(45000);
   const [listingActiveImages, setListingActiveImages] = useState<Record<number, string>>({});
   const [detailActiveImage, setDetailActiveImage] = useState<string | null>(null);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [pendingAuthEmail, setPendingAuthEmail] = useState<string | null>(null);
+  const [pendingRegister, setPendingRegister] = useState(false);
+  const [registerForm, setRegisterForm] = useState({
+    displayName: '',
+    email: '',
+    password: '',
+    role: 'BUYER' as UserRole,
+    dealerId: '',
+  });
 
   const loadVehicles = useCallback(() => api.listVehicles(), []);
   const loadLiveVehicles = useCallback(() => api.listVehicles({status: 'LIVE'}), []);
@@ -92,27 +112,6 @@ export default function App() {
   const loadDeals = useCallback(() => api.listDeals(), []);
   const loadDashboard = useCallback(() => api.getDashboard(), []);
   const loadCurrentUser = useCallback(() => api.getCurrentUser(), []);
-  const loadAssigneeTasks = useCallback(
-    () =>
-      api.listTasksForAssignee({
-        assigneeType: 'BUYER',
-        assigneeReference: 'buyer@example.com',
-      }),
-    [],
-  );
-  const loadNotifications = useCallback(
-    () =>
-      api.listNotifications({
-        recipientType: 'BUYER',
-        recipientReference: 'buyer@example.com',
-      }),
-    [],
-  );
-  const loadBuyerInbox = useCallback(
-    () => api.getBuyerInbox('buyer@example.com'),
-    [],
-  );
-
   const vehicles = useRemoteResource(loadVehicles);
   const liveVehicles = useRemoteResource(loadLiveVehicles);
   const dealers = useRemoteResource(loadDealers);
@@ -121,6 +120,58 @@ export default function App() {
   const deals = useRemoteResource(loadDeals);
   const dashboard = useRemoteResource<Dashboard>(loadDashboard);
   const currentUser = useRemoteResource<CurrentUser>(loadCurrentUser);
+  const currentRole = currentUser.data?.role ?? 'BUYER';
+  const visibleNavItems = useMemo(
+    () => navItems.filter(item => !item.roles || item.roles.includes(currentRole)),
+    [currentRole],
+  );
+  useEffect(() => {
+    if (!visibleNavItems.some(item => item.id === activeView)) {
+      setActiveView(visibleNavItems[0]?.id ?? 'overview');
+    }
+  }, [activeView, visibleNavItems]);
+  const participantContext = useMemo(() => {
+    if (!currentUser.data) {
+      return {type: 'BUYER' as ParticipantType, reference: 'buyer@example.com'};
+    }
+
+    if (currentUser.data.role === 'DEALER' && currentUser.data.dealerId) {
+      return {type: 'DEALER' as ParticipantType, reference: String(currentUser.data.dealerId)};
+    }
+
+    if (currentUser.data.role === 'ADMIN') {
+      return {type: 'ADMIN' as ParticipantType, reference: currentUser.data.email};
+    }
+
+    return {type: 'BUYER' as ParticipantType, reference: currentUser.data.email};
+  }, [currentUser.data]);
+  const buyerIdentity = useMemo(
+    () => ({
+      name: currentUser.data?.displayName ?? 'Desktop Demo Buyer',
+      email: currentUser.data?.email ?? 'buyer@example.com',
+    }),
+    [currentUser.data],
+  );
+  const loadAssigneeTasks = useCallback(
+    () =>
+      api.listTasksForAssignee({
+        assigneeType: participantContext.type,
+        assigneeReference: participantContext.reference,
+      }),
+    [participantContext.reference, participantContext.type],
+  );
+  const loadNotifications = useCallback(
+    () =>
+      api.listNotifications({
+        recipientType: participantContext.type,
+        recipientReference: participantContext.reference,
+      }),
+    [participantContext.reference, participantContext.type],
+  );
+  const loadBuyerInbox = useCallback(
+    () => api.getBuyerInbox(buyerIdentity.email),
+    [buyerIdentity.email],
+  );
   const assigneeTasks = useRemoteResource(loadAssigneeTasks);
   const notifications = useRemoteResource(loadNotifications);
   const buyerInbox = useRemoteResource(loadBuyerInbox);
@@ -324,6 +375,9 @@ export default function App() {
     useState<InventoryUploadMode>('UPSERT');
   const [inventoryUploadFile, setInventoryUploadFile] = useState<File | null>(null);
   const [inventoryUploadMessage, setInventoryUploadMessage] = useState<string | null>(null);
+  const [inventoryUploadResult, setInventoryUploadResult] = useState<InventoryUploadResponse | null>(
+    null,
+  );
   const [dealerInventoryCounts, setDealerInventoryCounts] = useState<Record<number, number>>({});
   const [dealerInventoryRows, setDealerInventoryRows] = useState<Vehicle[]>([]);
   const [dealerInventoryLabel, setDealerInventoryLabel] = useState<string | null>(null);
@@ -383,8 +437,8 @@ export default function App() {
 
     try {
       const lead = await api.createLead(selectedVehicleId, {
-        buyerName: 'Desktop Demo Buyer',
-        buyerEmail: 'buyer@example.com',
+        buyerName: buyerIdentity.name,
+        buyerEmail: buyerIdentity.email,
         buyerPhone: '555-0100',
         message: 'Requesting pricing clarity and next steps from the desktop experience.',
       });
@@ -396,7 +450,7 @@ export default function App() {
     } finally {
       setPendingLead(false);
     }
-  }, [leads, selectedVehicleId]);
+  }, [buyerIdentity.email, buyerIdentity.name, leads, selectedVehicleId]);
 
   const createAppointment = useCallback(async () => {
     if (!selectedVehicleId) {
@@ -408,8 +462,8 @@ export default function App() {
 
     try {
       const appointment = await api.createAppointment(selectedVehicleId, {
-        buyerName: 'Desktop Demo Buyer',
-        buyerEmail: 'buyer@example.com',
+        buyerName: buyerIdentity.name,
+        buyerEmail: buyerIdentity.email,
         type: 'TEST_DRIVE',
         scheduledAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
       });
@@ -425,7 +479,7 @@ export default function App() {
     } finally {
       setPendingAppointment(false);
     }
-  }, [appointments, selectedVehicleId]);
+  }, [appointments, buyerIdentity.email, buyerIdentity.name, selectedVehicleId]);
 
   const createDeal = useCallback(async () => {
     if (!selectedVehicleId) {
@@ -438,8 +492,8 @@ export default function App() {
     try {
       const deal = await api.createDeal({
         vehicleId: selectedVehicleId,
-        buyerName: 'Desktop Demo Buyer',
-        buyerEmail: 'buyer@example.com',
+        buyerName: buyerIdentity.name,
+        buyerEmail: buyerIdentity.email,
         buyerPhone: '555-0100',
         buyerAddressLine1: '100 Market Street',
         buyerAddressLine2: null,
@@ -465,7 +519,15 @@ export default function App() {
     } finally {
       setPendingDeal(false);
     }
-  }, [deals, selectedVehicleId, tradeInEnabled, tradeInMileage, tradeInVin]);
+  }, [
+    buyerIdentity.email,
+    buyerIdentity.name,
+    deals,
+    selectedVehicleId,
+    tradeInEnabled,
+    tradeInMileage,
+    tradeInVin,
+  ]);
 
   const scheduleFulfillment = useCallback(async () => {
     if (!selectedDeal) {
@@ -721,11 +783,13 @@ export default function App() {
   const uploadDealerInventoryCsv = useCallback(async () => {
     if (!selectedDealerId) {
       setInventoryUploadMessage('Select a dealer before uploading inventory CSV.');
+      setInventoryUploadResult(null);
       return;
     }
 
     if (!inventoryUploadFile) {
       setInventoryUploadMessage('Select a CSV file to upload.');
+      setInventoryUploadResult(null);
       return;
     }
 
@@ -735,16 +799,24 @@ export default function App() {
     try {
       const response = await api.uploadDealerInventoryCsv(
         selectedDealerId,
-        inventoryUploadMode,
-        inventoryUploadFile,
+        {
+          mode: inventoryUploadMode,
+          file: inventoryUploadFile,
+        },
       );
       await vehicles.refresh();
-      setDealerInventoryCounts(current => ({...current, [selectedDealerId]: response.totalRows}));
+      const loadedInventory = await api.listDealerInventory(selectedDealerId);
+      setDealerInventoryCounts(current => ({
+        ...current,
+        [selectedDealerId]: loadedInventory.length,
+      }));
+      setInventoryUploadResult(response);
       setInventoryUploadMessage(
         `Uploaded ${response.totalRows} rows (${response.createdCount} created, ${response.updatedCount} updated, ${response.rejectedCount} rejected).`,
       );
       setInventoryUploadFile(null);
     } catch (error) {
+      setInventoryUploadResult(null);
       setInventoryUploadMessage(getErrorMessage(error));
     } finally {
       setPendingInventoryUpload(false);
@@ -922,6 +994,57 @@ export default function App() {
     }
   }, [dealerSubscription, selectedDealerId, subscriptionForm]);
 
+  const signInDemoAccount = useCallback(async (account: (typeof demoAccounts)[number]) => {
+    setPendingAuthEmail(account.email);
+    setAuthMessage(null);
+
+    try {
+      const auth = await api.login({email: account.email, password: account.password});
+      setAuthToken(auth.token);
+      window.location.reload();
+    } catch (error) {
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setPendingAuthEmail(null);
+    }
+  }, []);
+
+  const signOut = useCallback(() => {
+    setAuthToken(null);
+    window.location.reload();
+  }, []);
+
+  const registerAccount = useCallback(async () => {
+    const dealerId = Number(registerForm.dealerId);
+    const payload = {
+      displayName: registerForm.displayName.trim(),
+      email: registerForm.email.trim(),
+      password: registerForm.password,
+      role: registerForm.role,
+      ...(registerForm.role === 'DEALER' && Number.isFinite(dealerId) && dealerId > 0
+        ? {dealerId}
+        : {}),
+    };
+
+    if (!payload.displayName || !payload.email || payload.password.length < 8) {
+      setAuthMessage('Name, email, and an 8+ character password are required.');
+      return;
+    }
+
+    setPendingRegister(true);
+    setAuthMessage(null);
+
+    try {
+      const auth = await api.registerAccount(payload);
+      setAuthToken(auth.token);
+      window.location.reload();
+    } catch (error) {
+      setAuthMessage(getErrorMessage(error));
+    } finally {
+      setPendingRegister(false);
+    }
+  }, [registerForm]);
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -934,7 +1057,7 @@ export default function App() {
         </div>
 
         <nav className="nav">
-          {navItems.map(item => (
+          {visibleNavItems.map(item => (
             <button
               key={item.id}
               className={item.id === activeView ? 'nav-item active' : 'nav-item'}
@@ -944,6 +1067,92 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        <div className="auth-panel">
+          <p className="auth-panel-title">Demo access</p>
+          <div className="auth-actions">
+            {demoAccounts.map(account => (
+              <button
+                key={account.email}
+                type="button"
+                className="secondary-button"
+                disabled={pendingAuthEmail === account.email}
+                onClick={() => {
+                  signInDemoAccount(account).catch(() => {});
+                }}>
+                {pendingAuthEmail === account.email ? 'Signing in...' : account.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="ghost-button" onClick={signOut}>
+            Sign out
+          </button>
+          <div className="auth-register">
+            <p className="auth-panel-title">Create account</p>
+            <input
+              className="text-input"
+              value={registerForm.displayName}
+              onChange={event => {
+                setRegisterForm(current => ({...current, displayName: event.target.value}));
+              }}
+              placeholder="Full name"
+            />
+            <input
+              className="text-input"
+              type="email"
+              value={registerForm.email}
+              onChange={event => {
+                setRegisterForm(current => ({...current, email: event.target.value}));
+              }}
+              placeholder="Email"
+            />
+            <input
+              className="text-input"
+              type="password"
+              value={registerForm.password}
+              onChange={event => {
+                setRegisterForm(current => ({...current, password: event.target.value}));
+              }}
+              placeholder="Password"
+            />
+            <select
+              className="text-input"
+              value={registerForm.role}
+              onChange={event => {
+                setRegisterForm(current => ({
+                  ...current,
+                  role: event.target.value as UserRole,
+                  dealerId: event.target.value === 'DEALER' ? current.dealerId : '',
+                }));
+              }}>
+              <option value="BUYER">Buyer</option>
+              <option value="DEALER">Dealer</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+            {registerForm.role === 'DEALER' ? (
+              <input
+                className="text-input"
+                type="number"
+                min={1}
+                value={registerForm.dealerId}
+                onChange={event => {
+                  setRegisterForm(current => ({...current, dealerId: event.target.value}));
+                }}
+                placeholder="Dealer ID"
+              />
+            ) : null}
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={pendingRegister}
+              onClick={() => {
+                registerAccount().catch(() => {});
+              }}>
+              {pendingRegister ? 'Creating...' : 'Create account'}
+            </button>
+          </div>
+          {authMessage ? <p className="auth-error">{authMessage}</p> : null}
+        </div>
 
       </aside>
 
@@ -1061,6 +1270,7 @@ export default function App() {
               inventoryUploadMode,
               inventoryUploadFile,
               inventoryUploadMessage,
+              inventoryUploadResult,
               dealerInventoryCounts,
               dealerInventoryRows,
               dealerInventoryLabel,
@@ -1251,6 +1461,7 @@ function renderMainPanel(args: {
   inventoryUploadMode: InventoryUploadMode;
   inventoryUploadFile: File | null;
   inventoryUploadMessage: string | null;
+  inventoryUploadResult: InventoryUploadResponse | null;
   dealerInventoryCounts: Record<number, number>;
   dealerInventoryRows: Vehicle[];
   dealerInventoryLabel: string | null;
@@ -1390,6 +1601,7 @@ function renderMainPanel(args: {
     inventoryUploadMode,
     inventoryUploadFile,
     inventoryUploadMessage,
+    inventoryUploadResult,
     dealerInventoryCounts,
     dealerInventoryRows,
     dealerInventoryLabel,
@@ -1758,7 +1970,7 @@ function renderMainPanel(args: {
                       <DetailRow
                         label="Trade-in mileage"
                         value={
-                          selectedDeal.tradeInMileage !== null
+                          selectedDeal.tradeInMileage != null
                             ? formatMileage(selectedDeal.tradeInMileage)
                             : 'Not provided'
                         }
@@ -1844,6 +2056,19 @@ function renderMainPanel(args: {
                                   );
                                 }}>
                                 Mark uploaded
+                              </button>
+                            ) : null}
+                            {document.status !== 'REJECTED' ? (
+                              <button
+                                type="button"
+                                className="secondary-button compact-button"
+                                disabled={pendingDocumentStatuses[document.id]}
+                                onClick={() => {
+                                  onUpdateDocumentStatus(document.id, 'REJECTED').catch(
+                                    () => {},
+                                  );
+                                }}>
+                                Mark rejected
                               </button>
                             ) : null}
                             {document.status !== 'APPROVED' ? (
@@ -2055,21 +2280,36 @@ function renderMainPanel(args: {
                         {appointment.status === 'COMPLETED' || appointment.status === 'CANCELED' ? (
                           <span className="muted-text">Finalized</span>
                         ) : (
-                          <button
-                            type="button"
-                            className="ghost-button"
-                            disabled={pendingAppointmentId === appointment.id}
-                            onClick={() => {
-                              const nextStatus =
-                                appointment.status === 'REQUESTED' ? 'CONFIRMED' : 'COMPLETED';
-                              onUpdateAppointmentStatus(appointment.id, nextStatus).catch(() => {});
-                            }}>
-                            {pendingAppointmentId === appointment.id
-                              ? 'Updating...'
-                              : appointment.status === 'REQUESTED'
-                                ? 'Confirm'
-                                : 'Mark completed'}
-                          </button>
+                          <div className="button-row">
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              disabled={pendingAppointmentId === appointment.id}
+                              onClick={() => {
+                                const nextStatus =
+                                  appointment.status === 'REQUESTED' ? 'CONFIRMED' : 'COMPLETED';
+                                onUpdateAppointmentStatus(appointment.id, nextStatus).catch(
+                                  () => {},
+                                );
+                              }}>
+                              {pendingAppointmentId === appointment.id
+                                ? 'Updating...'
+                                : appointment.status === 'REQUESTED'
+                                  ? 'Confirm'
+                                  : 'Mark completed'}
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              disabled={pendingAppointmentId === appointment.id}
+                              onClick={() => {
+                                onUpdateAppointmentStatus(appointment.id, 'CANCELED').catch(
+                                  () => {},
+                                );
+                              }}>
+                              Cancel
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -2127,6 +2367,43 @@ function renderMainPanel(args: {
               </button>
             </div>
             {inventoryUploadMessage ? <p className="muted-text">{inventoryUploadMessage}</p> : null}
+            {inventoryUploadResult ? (
+              <div className="table-card">
+                <div className="table-header">
+                  <h4>Last upload result</h4>
+                </div>
+                <p className="muted-text">
+                  Dealer {inventoryUploadResult.dealerName} (#{inventoryUploadResult.dealerId}) in{' '}
+                  {formatLabel(inventoryUploadResult.mode)} mode.
+                </p>
+                {inventoryUploadResult.rows.length > 0 ? (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Row</th>
+                        <th>VIN</th>
+                        <th>Status</th>
+                        <th>Vehicle ID</th>
+                        <th>Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inventoryUploadResult.rows.map(row => (
+                        <tr key={`${row.rowNumber}-${row.vin}`}>
+                          <td>{row.rowNumber}</td>
+                          <td>{row.vin}</td>
+                          <td>{formatLabel(row.status)}</td>
+                          <td>{row.vehicleId ?? '-'}</td>
+                          <td>{row.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <EmptyState message="Upload completed with no row-level details returned." />
+                )}
+              </div>
+            ) : null}
           </div>
           <div className="table-card">
             <div className="table-header">
@@ -2951,21 +3228,32 @@ function renderMainPanel(args: {
                         {task.status === 'COMPLETED' || task.status === 'CANCELED' ? (
                           'No action'
                         ) : (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            disabled={pendingTaskId === task.id}
-                            onClick={() => {
-                              const nextStatus =
-                                task.status === 'OPEN' ? 'IN_PROGRESS' : 'COMPLETED';
-                              onUpdateBuyerTaskStatus(task.id, nextStatus).catch(() => {});
-                            }}>
-                            {pendingTaskId === task.id
-                              ? 'Updating...'
-                              : task.status === 'OPEN'
-                                ? 'Start task'
-                                : 'Mark complete'}
-                          </button>
+                          <div className="button-row">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={pendingTaskId === task.id}
+                              onClick={() => {
+                                const nextStatus =
+                                  task.status === 'OPEN' ? 'IN_PROGRESS' : 'COMPLETED';
+                                onUpdateBuyerTaskStatus(task.id, nextStatus).catch(() => {});
+                              }}>
+                              {pendingTaskId === task.id
+                                ? 'Updating...'
+                                : task.status === 'OPEN'
+                                  ? 'Start task'
+                                  : 'Mark complete'}
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={pendingTaskId === task.id}
+                              onClick={() => {
+                                onUpdateBuyerTaskStatus(task.id, 'CANCELED').catch(() => {});
+                              }}>
+                              Cancel
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

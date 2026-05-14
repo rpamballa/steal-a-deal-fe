@@ -149,18 +149,18 @@ export type Deal = {
   buyerEmail: string;
   buyerPhone: string;
   buyerAddressLine1: string;
-  buyerAddressLine2: string | null;
+  buyerAddressLine2?: string | null;
   buyerCity: string;
   buyerState: string;
   buyerPostalCode: string;
   fulfillmentType: FulfillmentType;
-  fulfillmentStatus: FulfillmentStatus;
-  fulfillmentScheduledAt: string | null;
-  fulfillmentLocation: string | null;
-  fulfillmentNotes: string | null;
+  fulfillmentStatus?: FulfillmentStatus;
+  fulfillmentScheduledAt?: string | null;
+  fulfillmentLocation?: string | null;
+  fulfillmentNotes?: string | null;
   tradeIn: boolean;
-  tradeInVin: string | null;
-  tradeInMileage: number | null;
+  tradeInVin?: string | null;
+  tradeInMileage?: number | null;
   tradeInOffer: number;
   vehiclePrice: number;
   taxAmount: number;
@@ -287,14 +287,14 @@ export type DealTask = {
   title: string;
   description: string;
   status: DealTaskStatus;
-  dueAt: string | null;
+  dueAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
 export type Notification = {
   id: number;
-  dealId: number | null;
+  dealId?: number | null;
   recipientType: ParticipantType;
   recipientReference: string;
   title: string;
@@ -320,8 +320,8 @@ export type InboxDeal = {
   vehicleTitle: string;
   stage: DealStage;
   depositPaid: boolean;
-  fulfillmentScheduledAt: string | null;
-  fulfillmentLocation: string | null;
+  fulfillmentScheduledAt?: string | null;
+  fulfillmentLocation?: string | null;
   readyForHandoff: boolean;
   readyForCompletion: boolean;
   blockers: string[];
@@ -507,6 +507,11 @@ export type InventoryUploadRequest = {
   vehicles: InventoryUploadVehicle[];
 };
 
+export type InventoryCsvUploadRequest = {
+  mode: InventoryUploadMode;
+  file: File;
+};
+
 export type InventoryUploadRow = {
   rowNumber: number;
   vin: string;
@@ -534,11 +539,48 @@ export type PortalInvoice = {
   periodStart: string;
   periodEnd: string;
   dueAt: string;
-  paidAt: string | null;
+  paidAt?: string | null;
   createdAt: string;
 };
 
+export type ErrorResponse = {
+  error: string;
+  message: string;
+};
+
 export const API_BASE_URL = 'http://localhost:8282';
+const AUTH_TOKEN_STORAGE_KEY = 'stealadeal.auth.token';
+
+function readStoredAuthToken() {
+  if (
+    typeof window === 'undefined' ||
+    !window.localStorage ||
+    typeof window.localStorage.getItem !== 'function'
+  ) {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+let authToken: string | null = readStoredAuthToken();
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (token) {
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  } else {
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  }
+}
 
 type QueryValue = string | number | boolean | undefined | null;
 
@@ -560,13 +602,17 @@ function toQueryString(query?: Record<string, QueryValue>) {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormDataBody =
     typeof FormData !== 'undefined' && init?.body instanceof FormData;
+  const headers = new Headers(init?.headers);
+  headers.set('Accept', 'application/json');
+  if (!isFormDataBody && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (authToken) {
+    headers.set('Authorization', `Bearer ${authToken}`);
+  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      Accept: 'application/json',
-      ...(isFormDataBody ? {} : {'Content-Type': 'application/json'}),
-      ...(init?.headers ?? {}),
-    },
+    headers,
     ...init,
   });
 
@@ -628,10 +674,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  uploadDealerInventoryCsv: (dealerId: number, mode: InventoryUploadMode, file: File) => {
+  uploadDealerInventoryCsv: (
+    dealerId: number,
+    payload: InventoryCsvUploadRequest,
+  ) => {
     const formData = new FormData();
-    formData.append('mode', mode);
-    formData.append('file', file);
+    formData.append('mode', payload.mode);
+    formData.append('file', payload.file);
 
     return request<InventoryUploadResponse>(`/api/dealers/${dealerId}/inventory-upload`, {
       method: 'POST',
