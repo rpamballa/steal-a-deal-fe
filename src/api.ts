@@ -543,6 +543,35 @@ export type PortalInvoice = {
   createdAt: string;
 };
 
+export type OnboardingStage =
+  | 'REGISTERED'
+  | 'APPROVED'
+  | 'USER_CREATED'
+  | 'SUBSCRIPTION_ACTIVE'
+  | 'INVENTORY_LIVE'
+  | 'FIRST_LEAD'
+  | 'FIRST_DEAL'
+  | 'ACTIVATED';
+
+export type DealerOnboardingView = {
+  dealerId: number;
+  stage: OnboardingStage;
+  percentComplete: number;
+  complete: boolean;
+  nextActionStage: OnboardingStage | null;
+  nextAction: string;
+  currentStageSince: string | null;
+  nudgeCount: number;
+  registeredAt: string | null;
+  approvedAt: string | null;
+  userCreatedAt: string | null;
+  subscriptionActiveAt: string | null;
+  inventoryLiveAt: string | null;
+  firstLeadAt: string | null;
+  firstDealAt: string | null;
+  activatedAt: string | null;
+};
+
 export type ErrorResponse = {
   error: string;
   message: string;
@@ -626,6 +655,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
     } catch {
       // Keep the default message when the server does not return JSON.
+    }
+
+    // Central session-expiry handling: drop the token and let the app
+    // react (show the sign-in screen) instead of failing silently.
+    if (
+      (response.status === 401 || response.status === 403) &&
+      path !== '/api/auth/login' &&
+      path !== '/api/auth/register'
+    ) {
+      setAuthToken(null);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('stealadeal:unauthorized'));
+      }
     }
 
     throw new Error(message);
@@ -844,4 +886,6 @@ export const api = {
       body: JSON.stringify({read} satisfies MarkNotificationReadRequest),
     }),
   getDashboard: () => request<Dashboard>('/api/dashboard'),
+  getDealerOnboarding: (dealerId: number) =>
+    request<DealerOnboardingView>(`/api/dealers/${dealerId}/onboarding`),
 };

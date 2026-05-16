@@ -1,5 +1,20 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 
+import {Toaster, toast} from './lib/toast';
+import {toUserMessage} from './lib/userMessage';
+import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
+import {AuthScreen} from './components/AuthScreen';
+import {ConfirmDialog} from './components/ConfirmDialog';
+import {CompareDrawer} from './components/CompareDrawer';
+import {CompareView} from './components/CompareView';
+import {DealTimeline} from './components/DealTimeline';
+import {KanbanBoard} from './components/KanbanBoard';
+import {NotificationsBell} from './components/NotificationsBell';
+import {OnboardingChecklist} from './components/OnboardingChecklist';
+import {OperationsDashboard} from './components/OperationsDashboard';
+import {PaymentSlider} from './components/PaymentSlider';
+import {TaskList} from './components/TaskList';
+import {featureFlags} from './featureFlags';
 import {
   api,
   setAuthToken,
@@ -15,6 +30,7 @@ import {
   type DealTaskStatus,
   type DealTask,
   type DealerInbox,
+  type DealerOnboardingView,
   type DealerPortal,
   type DealerQueue,
   type Dashboard,
@@ -41,9 +57,11 @@ type NavView =
   | 'overview'
   | 'inventory'
   | 'vehicle'
+  | 'compare'
   | 'leads'
   | 'appointments'
   | 'deal-room'
+  | 'deal-desk'
   | 'dealers'
   | 'reporting';
 
@@ -58,7 +76,9 @@ const navItems: Array<{id: NavView; label: string; roles?: Array<CurrentUser['ro
   {id: 'overview', label: 'Overview'},
   {id: 'inventory', label: 'Inventory'},
   {id: 'vehicle', label: 'Vehicle Detail', roles: ['BUYER', 'ADMIN']},
+  {id: 'compare', label: 'Compare', roles: ['BUYER']},
   {id: 'deal-room', label: 'Deal Room', roles: ['BUYER', 'DEALER', 'ADMIN']},
+  {id: 'deal-desk', label: 'Deal Desk', roles: ['DEALER', 'ADMIN']},
   {id: 'leads', label: 'Leads', roles: ['DEALER', 'ADMIN']},
   {id: 'appointments', label: 'Appointments', roles: ['DEALER', 'ADMIN']},
   {id: 'dealers', label: 'Dealers', roles: ['ADMIN']},
@@ -85,9 +105,49 @@ const demoAccounts = [
   {label: 'Buyer', email: 'jordan@example.com', password: 'Buyer123!'},
 ];
 
+const MAX_COMPARE = 3;
+
+const NAV_VIEWS: NavView[] = [
+  'overview',
+  'inventory',
+  'vehicle',
+  'compare',
+  'leads',
+  'appointments',
+  'deal-room',
+  'deal-desk',
+  'dealers',
+  'reporting',
+];
+
 export default function App() {
-  const [activeView, setActiveView] = useState<NavView>('overview');
-  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
+  const initialUrl = useMemo(() => readUrlState(), []);
+  const [activeView, setActiveView] = useState<NavView>(
+    initialUrl.view && (NAV_VIEWS as string[]).includes(initialUrl.view)
+      ? (initialUrl.view as NavView)
+      : 'overview',
+  );
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(
+    initialUrl.vehicle,
+  );
+  const [depositConfirmOpen, setDepositConfirmOpen] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [compareVehicleIds, setCompareVehicleIds] = useState<number[]>([]);
+  const toggleCompareVehicle = useCallback((vehicleId: number) => {
+    setCompareVehicleIds(current => {
+      if (current.includes(vehicleId)) {
+        return current.filter(id => id !== vehicleId);
+      }
+      if (current.length >= MAX_COMPARE) {
+        return current;
+      }
+      return [...current, vehicleId];
+    });
+  }, []);
+  const removeCompareVehicle = useCallback((vehicleId: number) => {
+    setCompareVehicleIds(current => current.filter(id => id !== vehicleId));
+  }, []);
+  const clearCompare = useCallback(() => setCompareVehicleIds([]), []);
   const [listingQuery, setListingQuery] = useState('');
   const [listingStatus, setListingStatus] = useState<'ALL' | Vehicle['status']>('LIVE');
   const [maxListingPrice, setMaxListingPrice] = useState(45000);
@@ -175,13 +235,47 @@ export default function App() {
   const assigneeTasks = useRemoteResource(loadAssigneeTasks);
   const notifications = useRemoteResource(loadNotifications);
   const buyerInbox = useRemoteResource(loadBuyerInbox);
-  const [selectedDealerId, setSelectedDealerId] = useState<number | null>(null);
+  const [selectedDealerId, setSelectedDealerId] = useState<number | null>(
+    initialUrl.dealer,
+  );
 
   useEffect(() => {
     if (!selectedDealerId && (dealers.data?.length ?? 0) > 0) {
       setSelectedDealerId(dealers.data?.[0].id ?? null);
     }
   }, [dealers.data, selectedDealerId]);
+
+  // Keep the URL in sync so deep links, refresh, and Back all work.
+  const lastViewRef = React.useRef(activeView);
+  useEffect(() => {
+    const pushEntry = lastViewRef.current !== activeView;
+    lastViewRef.current = activeView;
+    writeUrlState(
+      {view: activeView, vehicle: selectedVehicleId, dealer: selectedDealerId},
+      pushEntry,
+    );
+  }, [activeView, selectedVehicleId, selectedDealerId]);
+
+  useEffect(
+    () =>
+      onUrlPop(state => {
+        if (state.view && (NAV_VIEWS as string[]).includes(state.view)) {
+          setActiveView(state.view as NavView);
+        }
+        setSelectedVehicleId(state.vehicle);
+        if (state.dealer != null) {
+          setSelectedDealerId(state.dealer);
+        }
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    const onUnauthorized = () => setSessionExpired(true);
+    window.addEventListener('stealadeal:unauthorized', onUnauthorized);
+    return () =>
+      window.removeEventListener('stealadeal:unauthorized', onUnauthorized);
+  }, []);
 
   const loadDealerPortal = useCallback(
     () =>
@@ -194,6 +288,13 @@ export default function App() {
     () =>
       selectedDealerId
         ? api.getDealerDealQueue(selectedDealerId)
+        : Promise.resolve(null),
+    [selectedDealerId],
+  );
+  const loadDealerOnboarding = useCallback(
+    () =>
+      selectedDealerId
+        ? api.getDealerOnboarding(selectedDealerId)
         : Promise.resolve(null),
     [selectedDealerId],
   );
@@ -247,6 +348,7 @@ export default function App() {
     [selectedDealerId],
   );
   const dealerPortal = useRemoteResource(loadDealerPortal);
+  const dealerOnboarding = useRemoteResource(loadDealerOnboarding);
   const dealerQueue = useRemoteResource(loadDealerQueue);
   const dealerInbox = useRemoteResource(loadDealerInbox);
   const dealerSubscription = useRemoteResource(loadDealerSubscription);
@@ -351,6 +453,13 @@ export default function App() {
     });
   }, [listingQuery, listingStatus, maxListingPrice, vehicles.data]);
 
+  const compareVehicles = useMemo(() => {
+    const lookup = new Map((vehicles.data ?? []).map(vehicle => [vehicle.id, vehicle]));
+    return compareVehicleIds
+      .map(id => lookup.get(id))
+      .filter((vehicle): vehicle is Vehicle => Boolean(vehicle));
+  }, [compareVehicleIds, vehicles.data]);
+
   const [leadMessage, setLeadMessage] = useState<string | null>(null);
   const [appointmentMessage, setAppointmentMessage] = useState<string | null>(null);
   const [dealMessage, setDealMessage] = useState<string | null>(null);
@@ -364,6 +473,18 @@ export default function App() {
   const [tradeInEnabled, setTradeInEnabled] = useState(false);
   const [tradeInVin, setTradeInVin] = useState('');
   const [tradeInMileage, setTradeInMileage] = useState('');
+  const tradeInVinError =
+    tradeInEnabled && tradeInVin.trim().length > 0 &&
+    !/^[A-HJ-NPR-Z0-9]{11,17}$/i.test(tradeInVin.trim())
+      ? 'Enter a valid VIN (11–17 letters and numbers).'
+      : null;
+  const tradeInMileageError =
+    tradeInEnabled && tradeInMileage.trim().length > 0 &&
+    !/^\d{1,7}$/.test(tradeInMileage.trim())
+      ? 'Mileage must be a whole number.'
+      : null;
+  const tradeInValid =
+    !tradeInEnabled || (!tradeInVinError && !tradeInMileageError);
   const [pendingNotificationId, setPendingNotificationId] = useState<number | null>(null);
   const [pendingTaskId, setPendingTaskId] = useState<number | null>(null);
   const [pendingLeadId, setPendingLeadId] = useState<number | null>(null);
@@ -564,16 +685,19 @@ export default function App() {
     setPendingDeposit(true);
     setDealMessage(null);
 
+    const amount = selectedDeal.depositAmount;
     try {
-      const updatedDeal = await api.payDealDeposit(selectedDeal.id, {
-        amount: selectedDeal.depositAmount,
-      });
+      await api.payDealDeposit(selectedDeal.id, {amount});
       await deals.refresh();
-      setDealMessage(
-        `Deposit recorded for deal #${updatedDeal.id}. Stage is now ${updatedDeal.stage}.`,
-      );
+      const paidMessage = `Deposit of ${formatCurrency(amount)} received. A confirmation has been added to your purchase.`;
+      setDealMessage(paidMessage);
+      toast.success(paidMessage);
+      setDepositConfirmOpen(false);
     } catch (error) {
-      setDealMessage(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setDealMessage(message);
+      toast.error(message);
+      throw error;
     } finally {
       setPendingDeposit(false);
     }
@@ -593,7 +717,7 @@ export default function App() {
         fileName: 'insurance-proof.pdf',
       });
       await dealDocuments.refresh();
-      setDealMessage(`Document ${document.fileName} added to the deal room.`);
+      setDealMessage(`Document "${document.fileName}" added.`);
       setActiveView('deal-room');
     } catch (error) {
       setDealMessage(getErrorMessage(error));
@@ -672,6 +796,33 @@ export default function App() {
     [notifications],
   );
 
+  const markAllNotificationsRead = useCallback(async () => {
+    const unread = (notifications.data ?? []).filter(item => !item.read);
+    if (unread.length === 0) {
+      return;
+    }
+    try {
+      await Promise.all(
+        unread.map(item => api.markNotificationRead(item.id, true)),
+      );
+      await notifications.refresh();
+      toast.success('All notifications marked as read.');
+    } catch (error) {
+      toast.error(toUserMessage(error));
+    }
+  }, [notifications]);
+
+  // Poll notifications so the bell stays current without a manual refresh.
+  useEffect(() => {
+    if (!currentUser.data) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      notifications.refresh().catch(() => {});
+    }, 30000);
+    return () => window.clearInterval(id);
+  }, [currentUser.data, notifications]);
+
   const updateBuyerTaskStatus = useCallback(
     async (taskId: number, status: DealTaskStatus) => {
       setPendingTaskId(taskId);
@@ -679,8 +830,11 @@ export default function App() {
 
       try {
         const updatedTask = await api.updateTaskStatus(taskId, {status});
-        await buyerInbox.refresh();
-        await notifications.refresh();
+        await Promise.all([
+          buyerInbox.refresh(),
+          notifications.refresh(),
+          dealTasks.refresh(),
+        ]);
         setDealMessage(`Task "${updatedTask.title}" moved to ${formatLabel(updatedTask.status)}.`);
       } catch (error) {
         setDealMessage(getErrorMessage(error));
@@ -688,7 +842,7 @@ export default function App() {
         setPendingTaskId(null);
       }
     },
-    [buyerInbox, notifications],
+    [buyerInbox, dealTasks, notifications],
   );
 
   const updateLeadStatus = useCallback(
@@ -1045,7 +1199,70 @@ export default function App() {
     }
   }, [registerForm]);
 
+  const authResolved = !currentUser.loading || currentUser.data != null;
+
+  if (authResolved && !currentUser.data) {
+    return (
+      <>
+        <Toaster />
+        <AuthScreen
+          sessionExpired={sessionExpired}
+          onAuthenticated={() => window.location.reload()}
+        />
+      </>
+    );
+  }
+
+  if (!authResolved) {
+    return (
+      <>
+        <Toaster />
+        <div className="auth-screen">
+          <div className="auth-screen-card">
+            <p className="brand-kicker">Steal A Deal</p>
+            <p className="empty-state">Loading…</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
+    <>
+    <Toaster />
+    <ConfirmDialog
+      open={depositConfirmOpen}
+      title="Confirm your deposit"
+      tone="primary"
+      pending={pendingDeposit}
+      confirmLabel={
+        selectedDeal ? `Pay ${formatCurrency(selectedDeal.depositAmount)}` : 'Pay deposit'
+      }
+      cancelLabel="Not yet"
+      body={
+        selectedDeal ? (
+          <div className="stack">
+            <p>
+              You're about to pay a deposit of{' '}
+              <strong>{formatCurrency(selectedDeal.depositAmount)}</strong> toward{' '}
+              <strong>{selectedDeal.vehicleTitle}</strong>.
+            </p>
+            <p className="dialog-fine">
+              This is applied to your purchase total of{' '}
+              {formatCurrency(selectedDeal.totalAmount)}. You'll get a confirmation
+              on this page once it's processed.
+            </p>
+          </div>
+        ) : null
+      }
+      onCancel={() => setDepositConfirmOpen(false)}
+      onConfirm={() => {
+        payDeposit().catch(() => {});
+      }}
+    />
+    <a href="#main-content" className="skip-link">
+      Skip to main content
+    </a>
     <div className="shell">
       <aside className="sidebar">
         <div>
@@ -1056,12 +1273,13 @@ export default function App() {
           </p>
         </div>
 
-        <nav className="nav">
+        <nav className="nav" aria-label="Primary">
           {visibleNavItems.map(item => (
             <button
               key={item.id}
               className={item.id === activeView ? 'nav-item active' : 'nav-item'}
               onClick={() => setActiveView(item.id)}
+              aria-current={item.id === activeView ? 'page' : undefined}
               type="button">
               {item.label}
             </button>
@@ -1069,109 +1287,49 @@ export default function App() {
         </nav>
 
         <div className="auth-panel">
-          <p className="auth-panel-title">Demo access</p>
-          <div className="auth-actions">
-            {demoAccounts.map(account => (
-              <button
-                key={account.email}
-                type="button"
-                className="secondary-button"
-                disabled={pendingAuthEmail === account.email}
-                onClick={() => {
-                  signInDemoAccount(account).catch(() => {});
-                }}>
-                {pendingAuthEmail === account.email ? 'Signing in...' : account.label}
-              </button>
-            ))}
-          </div>
+          {currentUser.data ? (
+            <>
+              <p className="auth-panel-title">Signed in</p>
+              <div className="auth-identity">
+                <strong>{currentUser.data.displayName}</strong>
+                <span>{currentUser.data.email}</span>
+                <span className="auth-role-chip">
+                  {formatLabel(currentUser.data.role)}
+                </span>
+              </div>
+            </>
+          ) : null}
           <button type="button" className="ghost-button" onClick={signOut}>
             Sign out
           </button>
-          <div className="auth-register">
-            <p className="auth-panel-title">Create account</p>
-            <input
-              className="text-input"
-              value={registerForm.displayName}
-              onChange={event => {
-                setRegisterForm(current => ({...current, displayName: event.target.value}));
-              }}
-              placeholder="Full name"
-            />
-            <input
-              className="text-input"
-              type="email"
-              value={registerForm.email}
-              onChange={event => {
-                setRegisterForm(current => ({...current, email: event.target.value}));
-              }}
-              placeholder="Email"
-            />
-            <input
-              className="text-input"
-              type="password"
-              value={registerForm.password}
-              onChange={event => {
-                setRegisterForm(current => ({...current, password: event.target.value}));
-              }}
-              placeholder="Password"
-            />
-            <select
-              className="text-input"
-              value={registerForm.role}
-              onChange={event => {
-                setRegisterForm(current => ({
-                  ...current,
-                  role: event.target.value as UserRole,
-                  dealerId: event.target.value === 'DEALER' ? current.dealerId : '',
-                }));
-              }}>
-              <option value="BUYER">Buyer</option>
-              <option value="DEALER">Dealer</option>
-              <option value="ADMIN">Admin</option>
-            </select>
-            {registerForm.role === 'DEALER' ? (
-              <input
-                className="text-input"
-                type="number"
-                min={1}
-                value={registerForm.dealerId}
-                onChange={event => {
-                  setRegisterForm(current => ({...current, dealerId: event.target.value}));
-                }}
-                placeholder="Dealer ID"
-              />
-            ) : null}
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={pendingRegister}
-              onClick={() => {
-                registerAccount().catch(() => {});
-              }}>
-              {pendingRegister ? 'Creating...' : 'Create account'}
-            </button>
-          </div>
-          {authMessage ? <p className="auth-error">{authMessage}</p> : null}
         </div>
 
       </aside>
 
-      <main className="content">
+      <main className="content" id="main-content" tabIndex={-1}>
         <header className="hero">
           <div>
-            <p className="hero-eyebrow">Buyer experience</p>
-            <h2 className="hero-title">Find the right car with cleaner browsing and faster next steps.</h2>
+            <p className="hero-eyebrow">Find your car</p>
+            <h2 className="hero-title">Find the right car, without the dealership noise.</h2>
             <p className="hero-copy">
               Explore live inventory, open vehicle details, and request follow-up or a test drive
               from one focused desktop experience.
             </p>
           </div>
-          <div className="hero-actions">
+          <div className="hero-actions hero-actions-row">
+            {featureFlags.notificationsBell ? (
+              <NotificationsBell
+                notifications={notifications.data ?? []}
+                pendingNotificationId={pendingNotificationId}
+                onMarkRead={notificationId => markNotificationAsRead(notificationId)}
+                onMarkAllRead={markAllNotificationsRead}
+              />
+            ) : null}
             <button
               type="button"
               className="primary-button"
               onClick={() => {
-                vehicles.refresh().catch(() => {});
+                vehicles.refresh().catch((error: unknown) => toast.error(toUserMessage(error)));
               }}>
               Refresh inventory
             </button>
@@ -1207,10 +1365,16 @@ export default function App() {
               liveVehicles,
               vehicles,
               buyerListingVehicles,
+              compareVehicles,
+              compareVehicleIds,
+              onToggleCompare: toggleCompareVehicle,
+              onRemoveCompare: removeCompareVehicle,
+              onClearCompare: clearCompare,
               selectedVehicle,
               vehicleDetail,
               leads,
               appointments,
+              deals,
               selectedDeal,
               dashboard,
               currentUser,
@@ -1225,6 +1389,7 @@ export default function App() {
               buyerInbox,
               selectedDealerId,
               dealerPortal,
+              dealerOnboarding,
               dealerQueue,
               dealerInbox,
               dealerSubscription,
@@ -1236,6 +1401,7 @@ export default function App() {
               onSelectVehicle: setSelectedVehicleId,
               onSelectDealer: setSelectedDealerId,
               onOpenVehicle: () => setActiveView('vehicle'),
+              onNavigate: setActiveView,
               listingQuery,
               listingStatus,
               maxListingPrice,
@@ -1250,6 +1416,7 @@ export default function App() {
               onDetailActiveImageChange: setDetailActiveImage,
               onCreateDeal: createDeal,
               onPayDeposit: payDeposit,
+              onRequestPayDeposit: () => setDepositConfirmOpen(true),
               onCreateInsuranceDocument: createInsuranceDocument,
               onAdvanceDealStage: advanceDealStage,
               onScheduleFulfillment: scheduleFulfillment,
@@ -1339,59 +1506,72 @@ export default function App() {
               </label>
               {tradeInEnabled ? (
                 <>
-                  <input
-                    type="text"
-                    className="text-input"
-                    placeholder="Trade-in VIN"
-                    value={tradeInVin}
-                    onChange={event => {
-                      setTradeInVin(event.target.value);
-                    }}
-                  />
-                  <input
-                    type="number"
-                    className="text-input"
-                    placeholder="Trade-in mileage"
-                    value={tradeInMileage}
-                    min={0}
-                    onChange={event => {
-                      setTradeInMileage(event.target.value);
-                    }}
-                  />
+                  <div className="field">
+                    <input
+                      type="text"
+                      className="text-input"
+                      placeholder="Trade-in VIN"
+                      value={tradeInVin}
+                      aria-invalid={Boolean(tradeInVinError)}
+                      onChange={event => {
+                        setTradeInVin(event.target.value);
+                      }}
+                    />
+                    {tradeInVinError ? (
+                      <span className="field-error">{tradeInVinError}</span>
+                    ) : null}
+                  </div>
+                  <div className="field">
+                    <input
+                      type="number"
+                      className="text-input"
+                      placeholder="Trade-in mileage"
+                      value={tradeInMileage}
+                      min={0}
+                      aria-invalid={Boolean(tradeInMileageError)}
+                      onChange={event => {
+                        setTradeInMileage(event.target.value);
+                      }}
+                    />
+                    {tradeInMileageError ? (
+                      <span className="field-error">{tradeInMileageError}</span>
+                    ) : null}
+                  </div>
                 </>
               ) : null}
               <button
                 type="button"
                 className="primary-button"
-                disabled={!selectedVehicleId || pendingDeal}
+                disabled={!selectedVehicleId || pendingDeal || !tradeInValid}
                 onClick={() => {
-                  createDeal().catch(() => {});
+                  createDeal().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
-                {pendingDeal ? 'Starting deal...' : selectedDeal ? 'Open deal room' : 'Start checkout'}
+                {pendingDeal ? 'Starting…' : selectedDeal ? 'View your purchase' : 'Start your purchase'}
               </button>
               <button
                 type="button"
                 className="secondary-button"
                 disabled={!selectedVehicleId || pendingLead}
                 onClick={() => {
-                  createLead().catch(() => {});
+                  createLead().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
-                {pendingLead ? 'Sending inquiry...' : 'Ask a question'}
+                {pendingLead ? 'Sending…' : 'Ask a question'}
               </button>
               <button
                 type="button"
                 className="secondary-button"
                 disabled={!selectedVehicleId || pendingAppointment}
                 onClick={() => {
-                  createAppointment().catch(() => {});
+                  createAppointment().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
-                {pendingAppointment ? 'Requesting appointment...' : 'Request test drive'}
+                {pendingAppointment ? 'Requesting…' : 'Request a test drive'}
               </button>
             </div>
           </section>
         </div>
       </main>
     </div>
+    </>
   );
 }
 
@@ -1400,10 +1580,16 @@ function renderMainPanel(args: {
   liveVehicles: AsyncState<Vehicle[]>;
   vehicles: AsyncState<Vehicle[]>;
   buyerListingVehicles: Vehicle[];
+  compareVehicles: Vehicle[];
+  compareVehicleIds: number[];
+  onToggleCompare: (vehicleId: number) => void;
+  onRemoveCompare: (vehicleId: number) => void;
+  onClearCompare: () => void;
   selectedVehicle: Vehicle | null;
   vehicleDetail: AsyncState<Vehicle | null>;
   leads: AsyncState<Lead[]>;
   appointments: AsyncState<Appointment[]>;
+  deals: AsyncState<Deal[]>;
   selectedDeal: Deal | null;
   dashboard: AsyncState<Dashboard>;
   currentUser: AsyncState<CurrentUser>;
@@ -1418,6 +1604,7 @@ function renderMainPanel(args: {
   buyerInbox: AsyncState<ParticipantInbox>;
   selectedDealerId: number | null;
   dealerPortal: AsyncState<DealerPortal | null>;
+  dealerOnboarding: AsyncState<DealerOnboardingView | null>;
   dealerQueue: AsyncState<DealerQueue | null>;
   dealerInbox: AsyncState<DealerInbox | null>;
   dealerSubscription: AsyncState<PortalSubscription | null>;
@@ -1429,6 +1616,7 @@ function renderMainPanel(args: {
   onSelectVehicle: (vehicleId: number) => void;
   onSelectDealer: (dealerId: number | null) => void;
   onOpenVehicle: () => void;
+  onNavigate: (view: NavView) => void;
   listingQuery: string;
   listingStatus: 'ALL' | Vehicle['status'];
   maxListingPrice: number;
@@ -1441,6 +1629,7 @@ function renderMainPanel(args: {
   onDetailActiveImageChange: (imageUrl: string) => void;
   onCreateDeal: () => Promise<void>;
   onPayDeposit: () => Promise<void>;
+  onRequestPayDeposit: () => void;
   onCreateInsuranceDocument: () => Promise<void>;
   onAdvanceDealStage: () => Promise<void>;
   onScheduleFulfillment: () => Promise<void>;
@@ -1540,10 +1729,16 @@ function renderMainPanel(args: {
     liveVehicles,
     vehicles,
     buyerListingVehicles,
+    compareVehicles,
+    compareVehicleIds,
+    onToggleCompare,
+    onRemoveCompare,
+    onClearCompare,
     selectedVehicle,
     vehicleDetail,
     leads,
     appointments,
+    deals,
     selectedDeal,
     dashboard,
     currentUser,
@@ -1558,6 +1753,7 @@ function renderMainPanel(args: {
     buyerInbox,
     selectedDealerId,
     dealerPortal,
+    dealerOnboarding,
     dealerQueue,
     dealerInbox,
     dealerSubscription,
@@ -1569,6 +1765,7 @@ function renderMainPanel(args: {
     onSelectVehicle,
     onSelectDealer,
     onOpenVehicle,
+    onNavigate,
     listingQuery,
     listingStatus,
     maxListingPrice,
@@ -1581,6 +1778,7 @@ function renderMainPanel(args: {
     onDetailActiveImageChange,
     onCreateDeal,
     onPayDeposit,
+    onRequestPayDeposit,
     onCreateInsuranceDocument,
     onAdvanceDealStage,
     onScheduleFulfillment,
@@ -1641,7 +1839,7 @@ function renderMainPanel(args: {
         <>
           <PanelHeader
             title="Overview"
-            detail="Desktop landing view focused on live inventory, dealers, and recent activity."
+            detail="Your hub for live inventory and recent activity."
           />
           <ResourceBlock state={liveVehicles}>
             <div className="table-card">
@@ -1723,7 +1921,7 @@ function renderMainPanel(args: {
         <>
           <PanelHeader
             title="Buyer listing page"
-            detail="Live inventory browsing tuned for a car shopper instead of an operations table."
+            detail="Browse live cars from our dealer network."
           />
           <ResourceBlock state={vehicles}>
             <div className="listing-shell">
@@ -1859,21 +2057,27 @@ function renderMainPanel(args: {
                       <div className="listing-actions">
                         <button
                           type="button"
-                          className="secondary-button"
+                          className="primary-button"
                           onClick={() => {
                             onSelectVehicle(vehicle.id);
                             onOpenVehicle();
                           }}>
                           View details
                         </button>
-                        <button
-                          type="button"
-                          className="primary-button"
-                          onClick={() => {
-                            onSelectVehicle(vehicle.id);
-                          }}>
-                          Select vehicle
-                        </button>
+                        {featureFlags.buyerCompare ? (
+                          <label className="compare-check">
+                            <input
+                              type="checkbox"
+                              checked={compareVehicleIds.includes(vehicle.id)}
+                              disabled={
+                                !compareVehicleIds.includes(vehicle.id) &&
+                                compareVehicleIds.length >= 3
+                              }
+                              onChange={() => onToggleCompare(vehicle.id)}
+                            />
+                            <span>Compare</span>
+                          </label>
+                        ) : null}
                       </div>
                           </>
                         );
@@ -1886,12 +2090,20 @@ function renderMainPanel(args: {
               )}
             </div>
           </ResourceBlock>
+          {featureFlags.buyerCompare ? (
+            <CompareDrawer
+              vehicles={compareVehicles}
+              onRemove={onRemoveCompare}
+              onOpen={() => onNavigate('compare')}
+              onClear={onClearCompare}
+            />
+          ) : null}
         </>
       );
     case 'vehicle':
       return (
         <>
-          <PanelHeader title="Vehicle detail" detail="Selected inventory item with backend data." />
+          <PanelHeader title="Vehicle details" detail="Full details for the car you selected." />
           <ResourceBlock state={vehicleDetail}>
             {vehicleDetail.data ? (
               <div className="detail-layout">
@@ -1907,6 +2119,9 @@ function renderMainPanel(args: {
                   <DetailRow label="Status" value={vehicleDetail.data.status} />
                   <DetailRow label="Mileage" value={formatMileage(vehicleDetail.data.mileage)} />
                   <DetailRow label="Price" value={formatCurrency(vehicleDetail.data.price)} />
+                  {featureFlags.buyerPaymentSlider ? (
+                    <PaymentSlider vehiclePrice={vehicleDetail.data.price} />
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -1915,12 +2130,31 @@ function renderMainPanel(args: {
           </ResourceBlock>
         </>
       );
+    case 'compare':
+      return (
+        <>
+          <PanelHeader
+            title="Compare vehicles"
+            detail="Compare up to three cars side by side. The best value in each row is highlighted."
+          />
+          <CompareView
+            vehicles={compareVehicles}
+            onRemove={onRemoveCompare}
+            onClear={onClearCompare}
+            onBrowse={() => onNavigate('inventory')}
+            onSelect={vehicleId => {
+              onSelectVehicle(vehicleId);
+              onNavigate('vehicle');
+            }}
+          />
+        </>
+      );
     case 'deal-room':
       return (
         <>
           <PanelHeader
             title="Deal room"
-            detail="Review checkout totals, deposit status, and required documents for the selected vehicle."
+            detail="Track your purchase: pricing, deposit, documents, and what happens next."
           />
           {selectedDeal ? (
             <div className="deal-room-grid">
@@ -1930,7 +2164,13 @@ function renderMainPanel(args: {
                     <p className="hero-eyebrow">Active deal</p>
                     <h3 className="listing-title">{selectedDeal.vehicleTitle}</h3>
                     <p className="listing-copy">
-                      Stage: {formatLabel(selectedDeal.stage)}. Fulfillment: {formatLabel(selectedDeal.fulfillmentType)} ({formatLabel(selectedDeal.fulfillmentStatus)}).
+                      {formatLabel(selectedDeal.stage)} ·{' '}
+                      {selectedDeal.fulfillmentType === 'HOME_DELIVERY'
+                        ? 'Home delivery'
+                        : 'Pickup'}
+                      {selectedDeal.fulfillmentStatus
+                        ? ` (${formatLabel(selectedDeal.fulfillmentStatus)})`
+                        : ''}
                     </p>
                   </div>
                   <span className="listing-badge status-live">
@@ -1978,6 +2218,12 @@ function renderMainPanel(args: {
                     </>
                   ) : null}
                   <DetailRow label="Total" value={formatCurrency(selectedDeal.totalAmount)} />
+                  {selectedDeal.depositPaid ? (
+                    <div className="receipt-row">
+                      <span>Deposit received</span>
+                      <strong>{formatCurrency(selectedDeal.depositAmount)} ✓</strong>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="deal-stage-strip">
@@ -1999,38 +2245,42 @@ function renderMainPanel(args: {
                     type="button"
                     className="primary-button"
                     disabled={selectedDeal.depositPaid || pendingDeposit}
-                    onClick={() => {
-                      onPayDeposit().catch(() => {});
-                    }}>
-                    {pendingDeposit ? 'Recording deposit...' : selectedDeal.depositPaid ? 'Deposit recorded' : `Pay ${formatCurrency(selectedDeal.depositAmount)} deposit`}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={pendingStageUpdate}
-                    onClick={() => {
-                      onAdvanceDealStage().catch(() => {});
-                    }}>
-                    {pendingStageUpdate ? 'Updating stage...' : 'Advance deal stage'}
+                    onClick={onRequestPayDeposit}>
+                    {pendingDeposit ? 'Processing…' : selectedDeal.depositPaid ? 'Deposit paid' : `Pay ${formatCurrency(selectedDeal.depositAmount)} deposit`}
                   </button>
                   <button
                     type="button"
                     className="secondary-button"
                     disabled={pendingDocument}
                     onClick={() => {
-                      onCreateInsuranceDocument().catch(() => {});
+                      onCreateInsuranceDocument().catch((error: unknown) => toast.error(toUserMessage(error)));
                     }}>
-                    {pendingDocument ? 'Adding document...' : 'Add insurance proof'}
+                    {pendingDocument ? 'Uploading…' : 'Upload insurance proof'}
                   </button>
                   <button
                     type="button"
                     className="secondary-button"
                     disabled={pendingFulfillment}
                     onClick={() => {
-                      onScheduleFulfillment().catch(() => {});
+                      onScheduleFulfillment().catch((error: unknown) => toast.error(toUserMessage(error)));
                     }}>
-                    {pendingFulfillment ? 'Scheduling fulfillment...' : 'Schedule fulfillment'}
+                    {pendingFulfillment
+                      ? 'Scheduling…'
+                      : selectedDeal.fulfillmentType === 'HOME_DELIVERY'
+                        ? 'Schedule delivery'
+                        : 'Schedule pickup'}
                   </button>
+                  {currentUser.data?.role !== 'BUYER' ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={pendingStageUpdate}
+                      onClick={() => {
+                        onAdvanceDealStage().catch((error: unknown) => toast.error(toUserMessage(error)));
+                      }}>
+                      {pendingStageUpdate ? 'Updating…' : 'Move to next step'}
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -2089,107 +2339,81 @@ function renderMainPanel(args: {
                       ))}
                     </div>
                   ) : (
-                    <EmptyState message="No documents in the deal room yet." />
+                    <EmptyState message="No documents requested yet." />
                   )}
                 </ResourceBlock>
               </div>
 
               <div className="panel-subsection">
-                <h4 className="panel-title">Readiness & blockers</h4>
-                <ResourceBlock state={dealReadiness}>
-                  {dealReadiness.data ? (
-                    <div className="stack">
-                      <DetailRow
-                        label="Ready for handoff"
-                        value={dealReadiness.data.readyForHandoff ? 'Yes' : 'No'}
-                      />
-                      <DetailRow
-                        label="Ready for completion"
-                        value={dealReadiness.data.readyForCompletion ? 'Yes' : 'No'}
-                      />
-                      <DetailRow
-                        label="Completed"
-                        value={dealReadiness.data.completed ? 'Yes' : 'No'}
-                      />
-                      {dealReadiness.data.blockers.length > 0 ? (
-                        <div className="stack">
-                          {dealReadiness.data.blockers.map(blocker => (
-                            <span key={blocker} className="listing-chip">
-                              {blocker}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span>No blockers currently reported.</span>
-                      )}
-                    </div>
-                  ) : (
-                    <EmptyState message="No readiness details available yet." />
-                  )}
-                </ResourceBlock>
-              </div>
-
-              <div className="panel-subsection">
-                <h4 className="panel-title">Deal tasks</h4>
+                <h4 className="panel-title">What you owe</h4>
                 <ResourceBlock state={dealTasks}>
-                  {(dealTasks.data ?? []).length > 0 ? (
-                    <div className="stack">
-                      {(dealTasks.data ?? []).map(task => (
-                        <div key={task.id} className="document-card">
-                          <strong>{task.title}</strong>
-                          <span>{task.description}</span>
-                          <span>
-                            {formatLabel(task.status)} • {formatLabel(task.assigneeType)}
-                          </span>
-                          <span>{task.dueAt ? formatDateTime(task.dueAt) : 'No due date'}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState message="No computed tasks for this deal." />
-                  )}
+                  {featureFlags.taskChecklist ? (
+                    <TaskList
+                      tasks={dealTasks.data ?? []}
+                      pendingTaskId={pendingTaskId}
+                      audience="BUYER"
+                      onToggleStatus={onUpdateBuyerTaskStatus}
+                      emptyMessage="You're all caught up. The dealer will let you know when something needs you."
+                    />
+                  ) : null}
                 </ResourceBlock>
               </div>
 
               <div className="panel-subsection">
-                <h4 className="panel-title">Activity timeline</h4>
+                <h4 className="panel-title">Deal timeline</h4>
                 <ResourceBlock state={dealActivity}>
-                  {(dealActivity.data ?? []).length > 0 ? (
-                    <div className="stack">
-                      {(dealActivity.data ?? []).map(item => (
-                        <div key={item.id} className="document-card">
-                          <strong>{formatLabel(item.eventType)}</strong>
-                          <span>{item.message}</span>
-                          <span>{formatDateTime(item.createdAt)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState message="No timeline events returned for this deal." />
-                  )}
+                  {featureFlags.dealTimeline ? (
+                    <DealTimeline
+                      currentStage={selectedDeal.stage}
+                      activity={dealActivity.data ?? []}
+                      readiness={dealReadiness.data ?? null}
+                    />
+                  ) : null}
                 </ResourceBlock>
               </div>
             </div>
           ) : (
             <div className="stack">
-              <EmptyState message="No deal has been started for the selected vehicle yet." />
+              <EmptyState message="You haven\u2019t started a purchase for this car yet." />
               <button
                 type="button"
                 className="primary-button"
                 disabled={!selectedVehicle || pendingDeal}
                 onClick={() => {
-                  onCreateDeal().catch(() => {});
+                  onCreateDeal().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
-                {pendingDeal ? 'Starting deal...' : 'Start deal room'}
+                {pendingDeal ? 'Starting…' : 'Start your purchase'}
               </button>
             </div>
           )}
         </>
       );
+    case 'deal-desk':
+      return (
+        <>
+          <PanelHeader
+            title="Deal desk"
+            detail="Every open deal by stage. Select a card to open it."
+          />
+          <ResourceBlock state={deals}>
+            <KanbanBoard
+              deals={deals.data ?? []}
+              selectedDealId={selectedDeal?.id ?? null}
+              onSelectDeal={dealId => {
+                const deal = (deals.data ?? []).find(item => item.id === dealId);
+                if (deal) {
+                  onSelectVehicle(deal.vehicleId);
+                  onNavigate('deal-room');
+                }
+              }}
+            />
+          </ResourceBlock>
+        </>
+      );
     case 'leads':
       return (
         <>
-          <PanelHeader title="Lead queue" detail="Live results from GET /api/leads." />
+          <PanelHeader title="Lead queue" detail="Buyer inquiries waiting for a response." />
           <ResourceBlock state={leads}>
             {(leads.data ?? []).length > 0 ? (
               <table className="data-table">
@@ -2226,7 +2450,7 @@ function renderMainPanel(args: {
                                   : lead.status === 'CONTACTED'
                                     ? 'QUALIFIED'
                                     : 'CLOSED';
-                              onUpdateLeadStatus(lead.id, nextStatus).catch(() => {});
+                              onUpdateLeadStatus(lead.id, nextStatus).catch((error: unknown) => toast.error(toUserMessage(error)));
                             }}>
                             {pendingLeadId === lead.id
                               ? 'Updating...'
@@ -2253,7 +2477,7 @@ function renderMainPanel(args: {
         <>
           <PanelHeader
             title="Appointments"
-            detail="Appointment operations translated into a desktop scheduling view."
+            detail="Test drives and delivery appointments."
           />
           <ResourceBlock state={appointments}>
             {filteredAppointments.length > 0 ? (
@@ -2327,13 +2551,13 @@ function renderMainPanel(args: {
         <>
           <PanelHeader
             title="Dealers"
-            detail="Approval, inventory, and dealer account management."
+            detail="Manage dealerships, approvals, and inventory."
           />
           <div className="table-card">
             <div className="table-header">
               <h4>Inventory CSV upload</h4>
             </div>
-            <p className="muted-text">Bulk upload inventory rows using the backend CSV contract.</p>
+            <p className="muted-text">Upload many vehicles at once with a CSV file.</p>
             <div className="grid-two">
               <label className="field">
                 <span>Mode</span>
@@ -2361,7 +2585,7 @@ function renderMainPanel(args: {
                 className="primary-button"
                 disabled={pendingInventoryUpload || !selectedDealerId || !inventoryUploadFile}
                 onClick={() => {
-                  onUploadDealerInventoryCsv().catch(() => {});
+                  onUploadDealerInventoryCsv().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
                 {pendingInventoryUpload ? 'Uploading...' : 'Upload CSV inventory'}
               </button>
@@ -2452,7 +2676,7 @@ function renderMainPanel(args: {
                 className="primary-button"
                 disabled={pendingDealerSave}
                 onClick={() => {
-                  onSaveDealer().catch(() => {});
+                  onSaveDealer().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
                 {pendingDealerSave
                   ? 'Saving...'
@@ -2565,7 +2789,7 @@ function renderMainPanel(args: {
                 className="primary-button"
                 disabled={pendingVehicleSave}
                 onClick={() => {
-                  onSaveVehicle().catch(() => {});
+                  onSaveVehicle().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
                 {pendingVehicleSave
                   ? 'Saving...'
@@ -2631,7 +2855,7 @@ function renderMainPanel(args: {
                         className="ghost-button"
                         disabled={pendingDealerId === dealer.id}
                         onClick={() => {
-                          onToggleDealerApproval(dealer).catch(() => {});
+                          onToggleDealerApproval(dealer).catch((error: unknown) => toast.error(toUserMessage(error)));
                         }}>
                         {pendingDealerId === dealer.id
                           ? 'Updating...'
@@ -2644,7 +2868,7 @@ function renderMainPanel(args: {
                         className="ghost-button"
                         disabled={pendingDealerInventoryId === dealer.id}
                         onClick={() => {
-                          onLoadDealerInventory(dealer).catch(() => {});
+                          onLoadDealerInventory(dealer).catch((error: unknown) => toast.error(toUserMessage(error)));
                         }}>
                         {pendingDealerInventoryId === dealer.id ? 'Loading...' : 'Load inventory'}
                       </button>
@@ -2702,7 +2926,14 @@ function renderMainPanel(args: {
     case 'reporting':
       return (
         <>
-          <PanelHeader title="Reporting" detail="Current backend reporting is count-based, not revenue-based." />
+          <PanelHeader
+            title="Reporting"
+            detail="Operations metrics are live. Revenue performance reporting is coming soon."
+          />
+          <div className="report-tabs">
+            <span className="report-tab active">Operations</span>
+            <span className="report-tab disabled">Performance (Phase 2)</span>
+          </div>
           <div className="table-card">
             <div className="table-header">
               <h4>Dealer portal focus</h4>
@@ -2723,6 +2954,12 @@ function renderMainPanel(args: {
               </select>
             </label>
           </div>
+          {featureFlags.dealerOnboarding && dealerOnboarding.data ? (
+            <OnboardingChecklist onboarding={dealerOnboarding.data} />
+          ) : null}
+          <ResourceBlock state={dealerPortal}>
+            {dealerPortal.data ? <OperationsDashboard portal={dealerPortal.data} /> : null}
+          </ResourceBlock>
           <div className="report-grid">
             <SummaryBox title="Selected vehicle" value={selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : 'None'} />
             <SummaryBox title="Lead count" value={String(dashboard.data?.newLeadCount ?? leads.data?.length ?? 0)} />
@@ -2735,7 +2972,7 @@ function renderMainPanel(args: {
             {dashboard.data ? (
               <div className="table-card">
                 <div className="table-header">
-                  <h4>Backend dashboard snapshot</h4>
+                  <h4>System snapshot</h4>
                 </div>
                 <div className="chip-row">
                   <span className="listing-chip">Dealers {dashboard.data.dealerCount}</span>
@@ -3022,7 +3259,7 @@ function renderMainPanel(args: {
                     className="primary-button"
                     disabled={pendingSubscriptionSave}
                     onClick={() => {
-                      onSaveSubscription().catch(() => {});
+                      onSaveSubscription().catch((error: unknown) => toast.error(toUserMessage(error)));
                     }}>
                     {pendingSubscriptionSave ? 'Saving subscription...' : 'Save subscription'}
                   </button>
@@ -3236,7 +3473,7 @@ function renderMainPanel(args: {
                               onClick={() => {
                                 const nextStatus =
                                   task.status === 'OPEN' ? 'IN_PROGRESS' : 'COMPLETED';
-                                onUpdateBuyerTaskStatus(task.id, nextStatus).catch(() => {});
+                                onUpdateBuyerTaskStatus(task.id, nextStatus).catch((error: unknown) => toast.error(toUserMessage(error)));
                               }}>
                               {pendingTaskId === task.id
                                 ? 'Updating...'
@@ -3249,7 +3486,7 @@ function renderMainPanel(args: {
                               className="secondary-button"
                               disabled={pendingTaskId === task.id}
                               onClick={() => {
-                                onUpdateBuyerTaskStatus(task.id, 'CANCELED').catch(() => {});
+                                onUpdateBuyerTaskStatus(task.id, 'CANCELED').catch((error: unknown) => toast.error(toUserMessage(error)));
                               }}>
                               Cancel
                             </button>
@@ -3290,7 +3527,7 @@ function renderMainPanel(args: {
                             className="secondary-button"
                             disabled={pendingNotificationId === item.id}
                             onClick={() => {
-                              onMarkNotificationAsRead(item.id).catch(() => {});
+                              onMarkNotificationAsRead(item.id).catch((error: unknown) => toast.error(toUserMessage(error)));
                             }}>
                             {pendingNotificationId === item.id ? 'Updating...' : 'Mark read'}
                           </button>
@@ -3331,6 +3568,8 @@ function useRemoteResource<T>(loader: () => Promise<T>): AsyncState<T> {
   }, [loader]);
 
   useEffect(() => {
+    // ResourceBlock renders load failures inline with a Retry control,
+    // so swallow here to avoid a toast storm on mount (e.g. optional endpoints).
     refresh().catch(() => {});
   }, [refresh]);
 
@@ -3345,7 +3584,14 @@ function ResourceBlock<T>({
   children: React.ReactNode;
 }) {
   if (state.loading) {
-    return <div className="empty-state">Loading backend data...</div>;
+    return (
+      <div className="skeleton-block" aria-busy="true" aria-label="Loading">
+        <span className="skeleton-line skeleton-line-lg" />
+        <span className="skeleton-line" />
+        <span className="skeleton-line" />
+        <span className="skeleton-line skeleton-line-sm" />
+      </div>
+    );
   }
 
   if (state.error) {
@@ -3356,6 +3602,7 @@ function ResourceBlock<T>({
           type="button"
           className="secondary-button"
           onClick={() => {
+            // Failure re-renders this same inline error block; no toast needed.
             state.refresh().catch(() => {});
           }}>
           Retry
@@ -3489,7 +3736,7 @@ function formatDateTime(value: string) {
 }
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unexpected error';
+  return toUserMessage(error);
 }
 
 function getVehicleGallery(vehicle: Vehicle) {
