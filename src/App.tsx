@@ -132,6 +132,8 @@ export default function App() {
   );
   const [depositConfirmOpen, setDepositConfirmOpen] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authReason, setAuthReason] = useState<string | null>(null);
   const [compareVehicleIds, setCompareVehicleIds] = useState<number[]>([]);
   const toggleCompareVehicle = useCallback((vehicleId: number) => {
     setCompareVehicleIds(current => {
@@ -181,15 +183,46 @@ export default function App() {
   const dashboard = useRemoteResource<Dashboard>(loadDashboard);
   const currentUser = useRemoteResource<CurrentUser>(loadCurrentUser);
   const currentRole = currentUser.data?.role ?? 'BUYER';
-  const visibleNavItems = useMemo(
-    () => navItems.filter(item => !item.roles || item.roles.includes(currentRole)),
-    [currentRole],
-  );
+  const authChecked = !currentUser.loading || currentUser.data != null;
+  const isGuest = authChecked && !currentUser.data;
+  const wasAuthed = React.useRef(false);
+  useEffect(() => {
+    if (currentUser.data) {
+      wasAuthed.current = true;
+    }
+  }, [currentUser.data]);
+
+  // Views a signed-out visitor may browse freely.
+  const guestViews: NavView[] = ['inventory', 'vehicle', 'compare'];
+  const visibleNavItems = useMemo(() => {
+    const byRole = navItems.filter(
+      item => !item.roles || item.roles.includes(currentRole),
+    );
+    if (isGuest) {
+      return byRole.filter(item => guestViews.includes(item.id));
+    }
+    return byRole;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRole, isGuest]);
   useEffect(() => {
     if (!visibleNavItems.some(item => item.id === activeView)) {
-      setActiveView(visibleNavItems[0]?.id ?? 'overview');
+      setActiveView(
+        visibleNavItems[0]?.id ?? (isGuest ? 'inventory' : 'overview'),
+      );
     }
-  }, [activeView, visibleNavItems]);
+  }, [activeView, visibleNavItems, isGuest]);
+
+  const requireAuth = useCallback(
+    (reason: string): boolean => {
+      if (currentUser.data) {
+        return true;
+      }
+      setAuthReason(reason);
+      setShowAuth(true);
+      return false;
+    },
+    [currentUser.data],
+  );
   const participantContext = useMemo(() => {
     if (!currentUser.data) {
       return {type: 'BUYER' as ParticipantType, reference: 'buyer@example.com'};
@@ -271,7 +304,14 @@ export default function App() {
   );
 
   useEffect(() => {
-    const onUnauthorized = () => setSessionExpired(true);
+    const onUnauthorized = () => {
+      // Only a *real* timeout (user was signed in) shows the expiry
+      // banner. A guest's initial /api/auth/me probe is not an error.
+      if (wasAuthed.current) {
+        setSessionExpired(true);
+        setShowAuth(true);
+      }
+    };
     window.addEventListener('stealadeal:unauthorized', onUnauthorized);
     return () =>
       window.removeEventListener('stealadeal:unauthorized', onUnauthorized);
@@ -1199,14 +1239,21 @@ export default function App() {
     }
   }, [registerForm]);
 
-  const authResolved = !currentUser.loading || currentUser.data != null;
+  const authResolved = authChecked;
 
-  if (authResolved && !currentUser.data) {
+  // Auth screen only when explicitly requested (Sign in, or a gated
+  // action) — never as a wall in front of public browsing.
+  if (showAuth && !currentUser.data) {
     return (
       <>
         <Toaster />
         <AuthScreen
           sessionExpired={sessionExpired}
+          reason={authReason}
+          onCancel={() => {
+            setShowAuth(false);
+            setAuthReason(null);
+          }}
           onAuthenticated={() => window.location.reload()}
         />
       </>
@@ -1297,11 +1344,24 @@ export default function App() {
                   {formatLabel(currentUser.data.role)}
                 </span>
               </div>
+              <button type="button" className="ghost-button" onClick={signOut}>
+                Sign out
+              </button>
             </>
-          ) : null}
-          <button type="button" className="ghost-button" onClick={signOut}>
-            Sign out
-          </button>
+          ) : (
+            <>
+              <p className="auth-panel-title">Browsing as guest</p>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  setAuthReason(null);
+                  setShowAuth(true);
+                }}>
+                Sign in / Create account
+              </button>
+            </>
+          )}
         </div>
 
       </aside>
@@ -1367,7 +1427,15 @@ export default function App() {
               buyerListingVehicles,
               compareVehicles,
               compareVehicleIds,
-              onToggleCompare: toggleCompareVehicle,
+              onToggleCompare: (vehicleId: number) => {
+                if (
+                  !compareVehicleIds.includes(vehicleId) &&
+                  !requireAuth('Create a free account to save and compare cars.')
+                ) {
+                  return;
+                }
+                toggleCompareVehicle(vehicleId);
+              },
               onRemoveCompare: removeCompareVehicle,
               onClearCompare: clearCompare,
               selectedVehicle,
@@ -1544,6 +1612,7 @@ export default function App() {
                 className="primary-button"
                 disabled={!selectedVehicleId || pendingDeal || !tradeInValid}
                 onClick={() => {
+                  if (!requireAuth('Create a free account to start your purchase.')) return;
                   createDeal().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
                 {pendingDeal ? 'Starting…' : selectedDeal ? 'View your purchase' : 'Start your purchase'}
@@ -1553,6 +1622,7 @@ export default function App() {
                 className="secondary-button"
                 disabled={!selectedVehicleId || pendingLead}
                 onClick={() => {
+                  if (!requireAuth('Sign in to message the dealer about this car.')) return;
                   createLead().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
                 {pendingLead ? 'Sending…' : 'Ask a question'}
@@ -1562,6 +1632,7 @@ export default function App() {
                 className="secondary-button"
                 disabled={!selectedVehicleId || pendingAppointment}
                 onClick={() => {
+                  if (!requireAuth('Sign in to book a test drive.')) return;
                   createAppointment().catch((error: unknown) => toast.error(toUserMessage(error)));
                 }}>
                 {pendingAppointment ? 'Requesting…' : 'Request a test drive'}

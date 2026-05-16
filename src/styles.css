@@ -2331,3 +2331,9 @@ button {
     transition: none !important;
   }
 }
+
+.auth-cancel {
+  display: block;
+  margin-top: 0.5rem;
+  color: #a8bfd8;
+}

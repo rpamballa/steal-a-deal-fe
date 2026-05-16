@@ -7,7 +7,9 @@ type Mode = 'signin' | 'register';
 
 type Props = {
   onAuthenticated: () => void;
+  onCancel?: () => void;
   sessionExpired?: boolean;
+  reason?: string | null;
 };
 
 const demoAccounts = [
@@ -16,7 +18,12 @@ const demoAccounts = [
   {label: 'Admin', email: 'admin@stealadeal.local', password: 'Admin123!'},
 ];
 
-export function AuthScreen({onAuthenticated, sessionExpired}: Props) {
+export function AuthScreen({
+  onAuthenticated,
+  onCancel,
+  sessionExpired,
+  reason,
+}: Props) {
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -104,9 +111,11 @@ export function AuthScreen({onAuthenticated, sessionExpired}: Props) {
           {mode === 'signin' ? 'Welcome back' : 'Create your account'}
         </h1>
         <p className="auth-screen-sub">
-          {mode === 'signin'
-            ? 'Sign in to browse cars and track your purchase.'
-            : 'Get started buying or selling on Steal A Deal.'}
+          {reason
+            ? reason
+            : mode === 'signin'
+              ? 'Sign in to track your purchase and saved cars.'
+              : 'Get started buying or selling on Steal A Deal.'}
         </p>
 
         {sessionExpired ? (
@@ -221,6 +230,15 @@ export function AuthScreen({onAuthenticated, sessionExpired}: Props) {
             ? "New here? Create an account"
             : 'Already have an account? Sign in'}
         </button>
+
+        {onCancel ? (
+          <button
+            type="button"
+            className="auth-link auth-cancel"
+            onClick={onCancel}>
+            ← Keep browsing without an account
+          </button>
+        ) : null}
 
         <div className="auth-demo">
           <button
