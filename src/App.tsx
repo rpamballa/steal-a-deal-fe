@@ -240,7 +240,7 @@ export default function App() {
   }, [currentUser.data]);
   const buyerIdentity = useMemo(
     () => ({
-      name: currentUser.data?.displayName ?? 'Desktop Demo Buyer',
+      name: currentUser.data?.displayName ?? 'Guest',
       email: currentUser.data?.email ?? 'buyer@example.com',
     }),
     [currentUser.data],
@@ -601,7 +601,7 @@ export default function App() {
         buyerName: buyerIdentity.name,
         buyerEmail: buyerIdentity.email,
         buyerPhone: '555-0100',
-        message: 'Requesting pricing clarity and next steps from the desktop experience.',
+        message: "Hi — I'm interested in this car. Can you share pricing details and next steps?",
       });
       await leads.refresh();
       setLeadMessage(`Lead #${lead.id} created with status ${lead.status}.`);
@@ -1314,9 +1314,9 @@ export default function App() {
       <aside className="sidebar">
         <div>
           <p className="brand-kicker">Steal A Deal</p>
-          <h1 className="brand-title">Car buying made clearer</h1>
+          <h1 className="brand-title">Find your car, your way</h1>
           <p className="brand-copy">
-            Browse listings, review details, and take the next step without dealership noise.
+            Browse dealer-verified cars with transparent pricing. No pressure, no haggling.
           </p>
         </div>
 
@@ -1372,8 +1372,8 @@ export default function App() {
             <p className="hero-eyebrow">Find your car</p>
             <h2 className="hero-title">Find the right car, without the dealership noise.</h2>
             <p className="hero-copy">
-              Explore live inventory, open vehicle details, and request follow-up or a test drive
-              from one focused desktop experience.
+              Explore live inventory, compare cars, and estimate your payment —
+              then message a dealer or book a test drive when you're ready.
             </p>
           </div>
           <div className="hero-actions hero-actions-row">
@@ -1991,18 +1991,18 @@ function renderMainPanel(args: {
       return (
         <>
           <PanelHeader
-            title="Buyer listing page"
-            detail="Browse live cars from our dealer network."
+            title="Browse cars"
+            detail="Live, dealer-verified cars with transparent pricing."
           />
           <ResourceBlock state={vehicles}>
             <div className="listing-shell">
               <section className="listing-hero">
                 <div>
-                  <p className="hero-eyebrow">Buyer inventory</p>
+                  <p className="hero-eyebrow">Browse cars</p>
                   <h3 className="listing-title">Shop confidently with clear pricing and live availability.</h3>
                   <p className="listing-copy">
-                    Browse active vehicles, narrow by budget, and jump straight into a detail view
-                    or inquiry without leaving the listing page.
+                    Browse active vehicles, narrow by budget, and open full details
+                    or compare without losing your place.
                   </p>
                 </div>
                 <div className="listing-summary">
@@ -2054,8 +2054,8 @@ function renderMainPanel(args: {
                 {[
                   'Transparent pricing',
                   'Live dealer inventory',
-                  'Reserve-ready vehicles',
-                  'Desktop comparison flow next',
+                  'Instant payment estimates',
+                  'Side-by-side compare',
                 ].map(chip => (
                   <span key={chip} className="listing-chip">
                     {chip}
