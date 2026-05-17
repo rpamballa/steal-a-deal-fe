@@ -2337,3 +2337,30 @@ button {
   margin-top: 0.5rem;
   color: #94A3B8;
 }
+
+/* ── PlatformDisclaimer (legal positioning) ───────────────────── */
+.platform-disclaimer {
+  color: #64748B;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.platform-disclaimer-inline {
+  margin: 0.75rem 0 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.platform-disclaimer-footer {
+  margin-top: 2rem;
+  padding: 1.25rem 0 0.5rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  display: grid;
+  gap: 0.4rem;
+}
+
+.platform-disclaimer-footer p { margin: 0; max-width: 90ch; }
+
+.platform-disclaimer-fineprint { color: #475569; }

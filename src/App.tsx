@@ -5,6 +5,7 @@ import {toUserMessage} from './lib/userMessage';
 import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
 import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
+import {PlatformDisclaimer} from './components/PlatformDisclaimer';
 import {CompareDrawer} from './components/CompareDrawer';
 import {CompareView} from './components/CompareView';
 import {DealTimeline} from './components/DealTimeline';
@@ -1640,6 +1641,7 @@ export default function App() {
             </div>
           </section>
         </div>
+        <PlatformDisclaimer variant="footer" />
       </main>
     </div>
     </>
@@ -2193,6 +2195,10 @@ function renderMainPanel(args: {
                   {featureFlags.buyerPaymentSlider ? (
                     <PaymentSlider vehiclePrice={vehicleDetail.data.price} />
                   ) : null}
+                  <PlatformDisclaimer
+                    variant="inline"
+                    dealerName={vehicleDetail.data.dealerName}
+                  />
                 </div>
               </div>
             ) : (
@@ -2295,6 +2301,10 @@ function renderMainPanel(args: {
                       <strong>{formatCurrency(selectedDeal.depositAmount)} ✓</strong>
                     </div>
                   ) : null}
+                  <PlatformDisclaimer
+                    variant="inline"
+                    dealerName={selectedVehicle?.dealerName}
+                  />
                 </div>
 
                 <div className="deal-stage-strip">
