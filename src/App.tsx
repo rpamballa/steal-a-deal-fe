@@ -7,6 +7,26 @@ import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
 import {Lightbox} from './components/Lightbox';
 import {PlatformDisclaimer} from './components/PlatformDisclaimer';
+import {
+  DetailRow,
+  EmptyState,
+  PanelHeader,
+  SummaryBox,
+  VehicleSummaryCard,
+} from './components/primitives';
+import {
+  formatCurrency,
+  formatDateTime,
+  formatLabel,
+  formatMileage,
+  getErrorMessage,
+  getVehicleGallery,
+} from './lib/format';
+import {
+  ResourceBlock,
+  useRemoteResource,
+  type AsyncState,
+} from './lib/useRemoteResource';
 import {CompareDrawer} from './components/CompareDrawer';
 import {CompareView} from './components/CompareView';
 import {DealTimeline} from './components/DealTimeline';
@@ -67,12 +87,6 @@ type NavView =
   | 'dealers'
   | 'reporting';
 
-type AsyncState<T> = {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  refresh: () => Promise<void>;
-};
 
 const navItems: Array<{id: NavView; label: string; roles?: Array<CurrentUser['role']>}> = [
   {id: 'overview', label: 'Overview'},
@@ -3803,209 +3817,4 @@ function renderMainPanel(args: {
     default:
       return null;
   }
-}
-
-function useRemoteResource<T>(loader: () => Promise<T>): AsyncState<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await loader();
-      setData(result);
-    } catch (caughtError) {
-      setError(getErrorMessage(caughtError));
-    } finally {
-      setLoading(false);
-    }
-  }, [loader]);
-
-  useEffect(() => {
-    // ResourceBlock renders load failures inline with a Retry control,
-    // so swallow here to avoid a toast storm on mount (e.g. optional endpoints).
-    refresh().catch(() => {});
-  }, [refresh]);
-
-  return {data, loading, error, refresh};
-}
-
-function ResourceBlock<T>({
-  state,
-  children,
-}: {
-  state: AsyncState<T>;
-  children: React.ReactNode;
-}) {
-  if (state.loading) {
-    return (
-      <div className="skeleton-block" aria-busy="true" aria-label="Loading">
-        <span className="skeleton-line skeleton-line-lg" />
-        <span className="skeleton-line" />
-        <span className="skeleton-line" />
-        <span className="skeleton-line skeleton-line-sm" />
-      </div>
-    );
-  }
-
-  if (state.error) {
-    return (
-      <div className="stack">
-        <div className="notice error">{state.error}</div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => {
-            // Failure re-renders this same inline error block; no toast needed.
-            state.refresh().catch(() => {});
-          }}>
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  return <>{children}</>;
-}
-
-function PanelHeader({title, detail}: {title: string; detail: string}) {
-  return (
-    <div className="panel-header">
-      <h3 className="panel-title">{title}</h3>
-      <p className="panel-detail">{detail}</p>
-    </div>
-  );
-}
-
-function VehicleSummaryCard({
-  vehicle,
-  large = false,
-  activeImage,
-  onSelectImage,
-}: {
-  vehicle: Vehicle;
-  large?: boolean;
-  activeImage?: string | null;
-  onSelectImage?: (imageUrl: string) => void;
-}) {
-  const galleryImages = getVehicleGallery(vehicle);
-  const resolvedActiveImage =
-    activeImage && galleryImages.includes(activeImage) ? activeImage : galleryImages[0];
-
-  return (
-    <article className={large ? 'vehicle-summary large' : 'vehicle-summary'}>
-      <div className="vehicle-image-wrap">
-        <img
-          className="vehicle-image"
-          src={resolvedActiveImage}
-          alt={`${vehicle.modelYear} ${vehicle.make} ${vehicle.model}`}
-        />
-      </div>
-      {galleryImages.length > 1 ? (
-        <div className="vehicle-gallery-row">
-          {galleryImages.slice(0, 5).map((imageUrl, index) => (
-            <button
-              key={`${vehicle.id}-detail-${index}`}
-              type="button"
-              className={
-                imageUrl === resolvedActiveImage
-                  ? 'vehicle-gallery-thumb active'
-                  : 'vehicle-gallery-thumb'
-              }
-              onClick={() => onSelectImage?.(imageUrl)}>
-              <img
-                className="vehicle-gallery-image"
-                src={imageUrl}
-                alt={`${vehicle.make} ${vehicle.model} detail ${index + 1}`}
-              />
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <p className="card-kicker">{vehicle.dealerName}</p>
-      <h4>
-        {vehicle.modelYear} {vehicle.make} {vehicle.model}
-      </h4>
-      <p>{vehicle.trim}</p>
-      <div className="summary-meta">
-        <span>{vehicle.status}</span>
-        <span>{formatMileage(vehicle.mileage)}</span>
-      </div>
-      <strong>{formatCurrency(vehicle.price)}</strong>
-    </article>
-  );
-}
-
-function SummaryBox({title, value}: {title: string; value: string}) {
-  return (
-    <article className="summary-box">
-      <p>{title}</p>
-      <strong>{value}</strong>
-    </article>
-  );
-}
-
-function DetailRow({label, value}: {label: string; value: string}) {
-  return (
-    <div className="detail-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function formatLabel(value: string | null | undefined) {
-  if (!value) {
-    return 'Unknown';
-  }
-
-  return value
-    .toLowerCase()
-    .split('_')
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function EmptyState({message}: {message: string}) {
-  return <div className="empty-state">{message}</div>;
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function formatMileage(value: number) {
-  return `${new Intl.NumberFormat('en-US').format(value)} mi`;
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
-
-function getErrorMessage(error: unknown) {
-  return toUserMessage(error);
-}
-
-function getVehicleGallery(vehicle: Vehicle) {
-  const seen = new Set<string>();
-  const ordered = [vehicle.primaryImageUrl, ...(vehicle.imageUrls ?? [])].filter(imageUrl => {
-    if (!imageUrl || seen.has(imageUrl)) {
-      return false;
-    }
-
-    seen.add(imageUrl);
-    return true;
-  });
-
-  return ordered;
 }
