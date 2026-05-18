@@ -11,6 +11,7 @@ export type UserRole = 'ADMIN' | 'DEALER' | 'BUYER';
 
 export type AuthResponse = {
   token: string;
+  refreshToken: string;
   expiresAt: string;
   userId: number;
   displayName: string;
@@ -18,6 +19,8 @@ export type AuthResponse = {
   role: UserRole;
   dealerId: number | null;
 };
+
+export type RefreshRequest = {refreshToken: string};
 
 export type CurrentUser = {
   userId: number;
@@ -184,6 +187,15 @@ export type DocumentType =
 
 export type DocumentStatus = 'REQUESTED' | 'UPLOADED' | 'APPROVED' | 'REJECTED';
 
+export type SigningStatus =
+  | 'NOT_REQUIRED'
+  | 'REQUESTED'
+  | 'SENT'
+  | 'SIGNED'
+  | 'DECLINED'
+  | 'EXPIRED'
+  | 'CANCELED';
+
 export type DealDocument = {
   id: number;
   dealId: number;
@@ -192,7 +204,22 @@ export type DealDocument = {
   fileName: string;
   createdAt: string;
   updatedAt: string;
+  // Additive fields shipped by the backend (tolerate nulls).
+  contentType: string | null;
+  sizeBytes: number | null;
+  hasContent: boolean;
+  signingEnvelopeId: string | null;
+  signingStatus: SigningStatus | null;
 };
+
+export type DepositIntent = {
+  intentId: string;
+  clientSecret: string;
+  status: string;
+  amount: number;
+};
+
+export type RejectDealerRequest = {reason: string};
 
 export type CreateLeadRequest = {
   buyerName: string;
@@ -575,7 +602,27 @@ export type DealerOnboardingView = {
 export type ErrorResponse = {
   error: string;
   message: string;
+  timestamp?: string;
 };
+
+/** Typed error thrown by the API layer for any non-2xx response. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly error: string;
+  readonly timestamp: string | null;
+  constructor(
+    status: number,
+    error: string,
+    message: string,
+    timestamp: string | null,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.error = error;
+    this.timestamp = timestamp;
+  }
+}
 
 // Base URL comes from the build/runtime env (Dev-Instruction §9.2).
 // Falls back to the local dev backend when unset.
@@ -584,37 +631,107 @@ export const API_BASE_URL =
     /\/+$/,
     '',
   ) || 'http://localhost:8282';
-const AUTH_TOKEN_STORAGE_KEY = 'stealadeal.auth.token';
+// SECURITY (spec §): tokens are held in MEMORY only — never localStorage
+// (XSS). A 15-min access token lost on hard refresh is acceptable; the
+// app bootstraps as a guest and the user re-authenticates.
+// TODO(auth): spec prefers httpOnly cookies, but the backend currently
+// returns tokens in the JSON body. In-memory + refresh-token rotation is
+// the correct approach until a coordinated backend change emits
+// Set-Cookie (httpOnly) on login/refresh with CSRF handling.
+let accessToken: string | null = null;
+let refreshToken: string | null = null;
 
-function readStoredAuthToken() {
-  if (
-    typeof window === 'undefined' ||
-    !window.localStorage ||
-    typeof window.localStorage.getItem !== 'function'
-  ) {
-    return null;
-  }
+export function setAuthSession(
+  session: {token: string; refreshToken: string} | null,
+) {
+  accessToken = session?.token ?? null;
+  refreshToken = session?.refreshToken ?? null;
+}
 
-  try {
-    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
+export function clearAuthSession() {
+  accessToken = null;
+  refreshToken = null;
+}
+
+export function getAccessToken() {
+  return accessToken;
+}
+
+export function getRefreshToken() {
+  return refreshToken;
+}
+
+function emitLogout() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('stealadeal:unauthorized'));
   }
 }
 
-let authToken: string | null = readStoredAuthToken();
+// Credential endpoints must never trigger refresh-on-401 (avoids loops).
+// NOTE: /api/auth/me is Bearer-protected and DOES participate in refresh.
+function isAuthPath(path: string) {
+  return (
+    path === '/api/auth/login' ||
+    path === '/api/auth/register' ||
+    path === '/api/auth/refresh'
+  );
+}
 
-export function setAuthToken(token: string | null) {
-  authToken = token;
-  if (typeof window === 'undefined') {
-    return;
+async function parseError(
+  response: Response,
+): Promise<{error: string; message: string; timestamp: string | null}> {
+  let error = `HTTP_${response.status}`;
+  let message = `Request failed with status ${response.status}`;
+  let timestamp: string | null = null;
+  try {
+    const body = (await response.json()) as Partial<ErrorResponse>;
+    if (body.error) error = body.error;
+    if (body.message) message = body.message;
+    if (body.timestamp) timestamp = body.timestamp;
+  } catch {
+    // Non-JSON error body — keep defaults.
   }
+  return {error, message, timestamp};
+}
 
-  if (token) {
-    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-  } else {
-    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+// Single-flight refresh: concurrent 401s share one refresh attempt.
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function doRefresh(): Promise<boolean> {
+  const current = refreshToken;
+  if (!current) {
+    clearAuthSession();
+    return false;
   }
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({refreshToken: current} satisfies RefreshRequest),
+    });
+    if (!response.ok) {
+      clearAuthSession();
+      return false;
+    }
+    const next = (await response.json()) as AuthResponse;
+    setAuthSession({token: next.token, refreshToken: next.refreshToken});
+    return true;
+  } catch {
+    clearAuthSession();
+    return false;
+  }
+}
+
+function ensureRefreshed(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
 }
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -634,7 +751,7 @@ function toQueryString(query?: Record<string, QueryValue>) {
   return parts.length > 0 ? `?${parts.join('&')}` : '';
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
   const isFormDataBody =
     typeof FormData !== 'undefined' && init?.body instanceof FormData;
   const headers = new Headers(init?.headers);
@@ -642,48 +759,53 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!isFormDataBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  if (authToken) {
-    headers.set('Authorization', `Bearer ${authToken}`);
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
   }
+  return fetch(`${API_BASE_URL}${path}`, {headers, ...init});
+}
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers,
-    ...init,
-  });
-
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}`;
-
-    try {
-      const error = (await response.json()) as {message?: string};
-      if (error.message) {
-        message = error.message;
-      }
-    } catch {
-      // Keep the default message when the server does not return JSON.
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (response.ok) {
+    if (response.status === 204) {
+      return undefined as T;
     }
+    return (await response.json()) as T;
+  }
+  const {error, message, timestamp} = await parseError(response);
+  throw new ApiError(response.status, error, message, timestamp);
+}
 
-    // Central session-expiry handling: drop the token and let the app
-    // react (show the sign-in screen) instead of failing silently.
-    if (
-      (response.status === 401 || response.status === 403) &&
-      path !== '/api/auth/login' &&
-      path !== '/api/auth/register'
-    ) {
-      setAuthToken(null);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('stealadeal:unauthorized'));
-      }
+/**
+ * Single centralized API entrypoint. Attaches the in-memory bearer
+ * token, parses the standard error body, and on a 401 from a PROTECTED
+ * call performs exactly one shared refresh-and-retry. 403 (authorized
+ * failure) and /api/auth/* never trigger refresh.
+ */
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let response = await rawFetch(path, init);
+
+  if (
+    response.status === 401 &&
+    !isAuthPath(path) &&
+    getRefreshToken() !== null
+  ) {
+    const refreshed = await ensureRefreshed();
+    if (refreshed) {
+      response = await rawFetch(path, init); // retry once with new token
+    } else {
+      emitLogout();
+      const {error, message, timestamp} = await parseError(response);
+      throw new ApiError(401, error, message, timestamp);
     }
-
-    throw new Error(message);
+  } else if (response.status === 401 && !isAuthPath(path)) {
+    // No refresh token available (e.g. backend without rotation yet).
+    clearAuthSession();
+    emitLogout();
   }
+  // 403 = authenticated but not authorized: do NOT refresh or clear.
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
+  return handleResponse<T>(response);
 }
 
 export const api = {
@@ -894,4 +1016,99 @@ export const api = {
   getDashboard: () => request<Dashboard>('/api/dashboard'),
   getDealerOnboarding: (dealerId: number) =>
     request<DealerOnboardingView>(`/api/dealers/${dealerId}/onboarding`),
+
+  // ── Auth ────────────────────────────────────────────────────
+  refreshSession: (refreshTokenValue: string) =>
+    request<AuthResponse>('/api/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({
+        refreshToken: refreshTokenValue,
+      } satisfies RefreshRequest),
+    }),
+
+  // ── Admin: dealer approval ──────────────────────────────────
+  adminApproveDealer: (dealerId: number) =>
+    request<Dealer>(`/api/admin/dealers/${dealerId}/approve`, {
+      method: 'POST',
+    }),
+  adminRejectDealer: (dealerId: number, reason: string) =>
+    request<Dealer>(`/api/admin/dealers/${dealerId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({reason} satisfies RejectDealerRequest),
+    }),
+
+  // ── Deal documents (generate / upload / download / sign) ────
+  generateBuyerAgreement: (dealId: number) =>
+    request<DealDocument>(
+      `/api/deals/${dealId}/documents/buyer-agreement/generate`,
+      {method: 'POST'},
+    ),
+  uploadDealDocument: (dealId: number, documentId: number, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<DealDocument>(
+      `/api/deals/${dealId}/documents/${documentId}/upload`,
+      {method: 'POST', body: form},
+    );
+  },
+  downloadDealDocument: async (
+    dealId: number,
+    documentId: number,
+  ): Promise<Blob> => {
+    let response = await rawFetch(
+      `/api/deals/${dealId}/documents/${documentId}/download`,
+    );
+    if (response.status === 401 && getRefreshToken() !== null) {
+      const refreshed = await ensureRefreshed();
+      if (refreshed) {
+        response = await rawFetch(
+          `/api/deals/${dealId}/documents/${documentId}/download`,
+        );
+      } else {
+        emitLogout();
+      }
+    }
+    if (!response.ok) {
+      const {error, message, timestamp} = await parseError(response);
+      throw new ApiError(response.status, error, message, timestamp);
+    }
+    return response.blob();
+  },
+  signDealDocument: (dealId: number, documentId: number) =>
+    request<DealDocument>(
+      `/api/deals/${dealId}/documents/${documentId}/sign`,
+      {method: 'POST'},
+    ),
+
+  // ── Stripe deposit intent (returns PaymentIntent client secret) ─
+  createDepositIntent: (dealId: number) =>
+    request<DepositIntent>(`/api/deals/${dealId}/deposit/intent`, {
+      method: 'POST',
+    }),
+
+  // ── Inventory photos (multipart, repeatable "files", max 10) ──
+  uploadInventoryPhotos: (
+    dealerId: number,
+    vehicleId: number,
+    files: File[],
+  ) => {
+    const form = new FormData();
+    for (const file of files) {
+      form.append('files', file);
+    }
+    return request<Vehicle>(
+      `/api/dealers/${dealerId}/inventory/${vehicleId}/photos`,
+      {method: 'POST', body: form},
+    );
+  },
 };
+
+/** Public photo URL for a stored vehicle photo key. */
+export function vehiclePhotoUrl(vehicleId: number, key: string): string {
+  return `${API_BASE_URL}/api/vehicles/${vehicleId}/photos/${encodeURIComponent(
+    key,
+  )}`;
+}
+
+/** Max photos allowed per listing (backend rejects >10 with HTTP 400). */
+export const MAX_VEHICLE_PHOTOS = 10;

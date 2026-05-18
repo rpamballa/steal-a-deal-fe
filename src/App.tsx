@@ -39,7 +39,9 @@ import {TaskList} from './components/TaskList';
 import {featureFlags} from './featureFlags';
 import {
   api,
-  setAuthToken,
+  setAuthSession,
+  clearAuthSession,
+  MAX_VEHICLE_PHOTOS,
   type Appointment,
   type CreateVehicleRequest,
   type CurrentUser,
@@ -1177,6 +1179,15 @@ export default function App() {
       status: vehicleForm.status,
     };
 
+    if (payload.imageUrls.length > MAX_VEHICLE_PHOTOS) {
+      setDealMessage(
+        `A listing can have at most ${MAX_VEHICLE_PHOTOS} photos. Remove ${
+          payload.imageUrls.length - MAX_VEHICLE_PHOTOS
+        } to continue.`,
+      );
+      return;
+    }
+
     if (
       !Number.isFinite(payload.dealerId) ||
       !payload.vin ||
@@ -1290,7 +1301,7 @@ export default function App() {
 
     try {
       const auth = await api.login({email: account.email, password: account.password});
-      setAuthToken(auth.token);
+      setAuthSession({token: auth.token, refreshToken: auth.refreshToken});
       window.location.reload();
     } catch (error) {
       setAuthMessage(getErrorMessage(error));
@@ -1300,7 +1311,7 @@ export default function App() {
   }, []);
 
   const signOut = useCallback(() => {
-    setAuthToken(null);
+    clearAuthSession();
     window.location.reload();
   }, []);
 
@@ -1326,7 +1337,7 @@ export default function App() {
 
     try {
       const auth = await api.registerAccount(payload);
-      setAuthToken(auth.token);
+      setAuthSession({token: auth.token, refreshToken: auth.refreshToken});
       window.location.reload();
     } catch (error) {
       setAuthMessage(getErrorMessage(error));
@@ -1350,7 +1361,14 @@ export default function App() {
             setShowAuth(false);
             setAuthReason(null);
           }}
-          onAuthenticated={() => window.location.reload()}
+          onAuthenticated={() => {
+            // Tokens live in memory — never reload (it would lose them).
+            // Re-fetch the session-scoped user and dismiss the gate.
+            setShowAuth(false);
+            setAuthReason(null);
+            setSessionExpired(false);
+            currentUser.refresh().catch(() => {});
+          }}
         />
       </>
     );
@@ -3118,12 +3136,37 @@ function renderMainPanel(args: {
                 </select>
               </label>
               <label className="field">
-                <span>Image URLs (comma-separated)</span>
+                <span>Image URLs (comma-separated, max {MAX_VEHICLE_PHOTOS})</span>
                 <input
                   value={vehicleForm.imageUrls}
                   onChange={event => onVehicleFormChange('imageUrls', event.target.value)}
                   placeholder="https://img-1, https://img-2"
+                  aria-invalid={
+                    vehicleForm.imageUrls
+                      .split(',')
+                      .map(v => v.trim())
+                      .filter(Boolean).length > MAX_VEHICLE_PHOTOS
+                  }
                 />
+                {(() => {
+                  const count = vehicleForm.imageUrls
+                    .split(',')
+                    .map(v => v.trim())
+                    .filter(Boolean).length;
+                  return (
+                    <span
+                      className={
+                        count > MAX_VEHICLE_PHOTOS
+                          ? 'field-error'
+                          : 'field-hint'
+                      }>
+                      {count}/{MAX_VEHICLE_PHOTOS} photos
+                      {count > MAX_VEHICLE_PHOTOS
+                        ? ' — remove some to publish'
+                        : ''}
+                    </span>
+                  );
+                })()}
               </label>
             </div>
             <div className="inline-actions">

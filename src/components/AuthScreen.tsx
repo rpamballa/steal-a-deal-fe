@@ -1,6 +1,7 @@
 import React, {useState} from 'react';
 
-import {api, setAuthToken, type UserRole} from '../api';
+import {type UserRole} from '../api';
+import {useAuth} from '../context/AuthContext';
 import {toUserMessage} from '../lib/userMessage';
 
 type Mode = 'signin' | 'register';
@@ -24,6 +25,7 @@ export function AuthScreen({
   sessionExpired,
   reason,
 }: Props) {
+  const {login, register} = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -61,11 +63,10 @@ export function AuthScreen({
     setPending(true);
     try {
       if (mode === 'signin') {
-        const auth = await api.login({email: email.trim(), password});
-        setAuthToken(auth.token);
+        await login(email.trim(), password);
       } else {
         const parsedDealer = Number(dealerId);
-        const auth = await api.registerAccount({
+        await register({
           displayName: displayName.trim(),
           email: email.trim(),
           password,
@@ -76,7 +77,6 @@ export function AuthScreen({
             ? {dealerId: parsedDealer}
             : {}),
         });
-        setAuthToken(auth.token);
       }
       onAuthenticated();
     } catch (caught) {
@@ -90,11 +90,7 @@ export function AuthScreen({
     setError(null);
     setPending(true);
     try {
-      const auth = await api.login({
-        email: account.email,
-        password: account.password,
-      });
-      setAuthToken(auth.token);
+      await login(account.email, account.password);
       onAuthenticated();
     } catch (caught) {
       setError(toUserMessage(caught));
