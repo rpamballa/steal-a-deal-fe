@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 
 import type {Favorite, SavedSearch} from '../api';
 
@@ -10,6 +10,7 @@ type Props = {
   onRemoveFavorite: (vehicleId: number) => void;
   onApplySearch: (search: SavedSearch) => void;
   onToggleAlert: (search: SavedSearch) => void;
+  onRenameSearch: (search: SavedSearch, name: string) => void;
   onDeleteSearch: (id: number) => void;
   onBrowse: () => void;
 };
@@ -43,9 +44,12 @@ export function GarageView({
   onRemoveFavorite,
   onApplySearch,
   onToggleAlert,
+  onRenameSearch,
   onDeleteSearch,
   onBrowse,
 }: Props) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [draftName, setDraftName] = useState('');
   return (
     <div className="garage">
       <section className="garage-section">
@@ -119,7 +123,39 @@ export function GarageView({
             {savedSearches.map(s => (
               <li key={s.id} className="saved-search-row">
                 <div className="saved-search-info">
-                  <strong>{s.name}</strong>
+                  {editingId === s.id ? (
+                    <form
+                      className="saved-search-rename"
+                      onSubmit={e => {
+                        e.preventDefault();
+                        const next = draftName.trim();
+                        if (next && next !== s.name) {
+                          onRenameSearch(s, next);
+                        }
+                        setEditingId(null);
+                      }}>
+                      <input
+                        autoFocus
+                        value={draftName}
+                        aria-label="Search name"
+                        maxLength={60}
+                        onChange={e => setDraftName(e.target.value)}
+                      />
+                      <button
+                        type="submit"
+                        className="secondary-button compact-button">
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button compact-button"
+                        onClick={() => setEditingId(null)}>
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    <strong>{s.name}</strong>
+                  )}
                   <span>{describeQuery(s)}</span>
                   <span className="saved-search-count">
                     {s.lastMatchedCount} match
@@ -141,6 +177,17 @@ export function GarageView({
                     onClick={() => onApplySearch(s)}>
                     Apply
                   </button>
+                  {editingId === s.id ? null : (
+                    <button
+                      type="button"
+                      className="ghost-button compact-button"
+                      onClick={() => {
+                        setEditingId(s.id);
+                        setDraftName(s.name);
+                      }}>
+                      Rename
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="ghost-button compact-button"

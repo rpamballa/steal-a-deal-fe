@@ -3318,3 +3318,19 @@ html[data-theme='light'] .dealer-profile-note { color: #334155; }
 html[data-theme='light'] .dealer-profile-price { color: #B45309; }
 html[data-theme='light'] .dealer-profile-card,
 html[data-theme='light'] .disclosures { border-color: #E2E8F0; }
+
+.saved-search-rename {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.saved-search-rename input {
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  background: #FFFFFF;
+  color: #0F172A;
+  min-width: 160px;
+}

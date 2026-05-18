@@ -462,6 +462,23 @@ export default function App() {
     [savedSearches],
   );
 
+  const renameSavedSearch = useCallback(
+    async (s: SavedSearch, name: string) => {
+      try {
+        await api.updateSavedSearch(s.id, {
+          name,
+          query: s.query,
+          alertOnPriceDrop: s.alertOnPriceDrop,
+        });
+        await savedSearches.refresh();
+        toast.success(`Renamed to “${name}”.`);
+      } catch (error) {
+        toast.error(toUserMessage(error));
+      }
+    },
+    [savedSearches],
+  );
+
   const deleteSavedSearch = useCallback(
     async (id: number) => {
       try {
@@ -1918,6 +1935,7 @@ export default function App() {
               onSaveSearch: saveCurrentSearch,
               onApplySavedSearch: applySavedSearch,
               onToggleSavedSearchAlert: toggleSavedSearchAlert,
+              onRenameSavedSearch: renameSavedSearch,
               onDeleteSavedSearch: deleteSavedSearch,
               inventoryPage,
               inventoryPageCount,
@@ -2190,6 +2208,7 @@ function renderMainPanel(args: {
   onSaveSearch: () => void;
   onApplySavedSearch: (search: SavedSearch) => void;
   onToggleSavedSearchAlert: (search: SavedSearch) => void;
+  onRenameSavedSearch: (search: SavedSearch, name: string) => void;
   onDeleteSavedSearch: (id: number) => void;
   inventoryPage: number;
   inventoryPageCount: number;
@@ -2374,6 +2393,7 @@ function renderMainPanel(args: {
     onSaveSearch,
     onApplySavedSearch,
     onToggleSavedSearchAlert,
+    onRenameSavedSearch,
     onDeleteSavedSearch,
     inventoryPage,
     inventoryPageCount,
@@ -3106,6 +3126,7 @@ function renderMainPanel(args: {
             onRemoveFavorite={onToggleFavorite}
             onApplySearch={onApplySavedSearch}
             onToggleAlert={onToggleSavedSearchAlert}
+            onRenameSearch={onRenameSavedSearch}
             onDeleteSearch={onDeleteSavedSearch}
             onBrowse={() => onNavigate('inventory')}
           />
