@@ -577,7 +577,13 @@ export type ErrorResponse = {
   message: string;
 };
 
-export const API_BASE_URL = 'http://localhost:8282';
+// Base URL comes from the build/runtime env (Dev-Instruction §9.2).
+// Falls back to the local dev backend when unset.
+export const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
+    /\/+$/,
+    '',
+  ) || 'http://localhost:8282';
 const AUTH_TOKEN_STORAGE_KEY = 'stealadeal.auth.token';
 
 function readStoredAuthToken() {
