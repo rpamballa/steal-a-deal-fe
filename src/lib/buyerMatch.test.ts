@@ -57,10 +57,34 @@ describe('dealScore', () => {
   });
 });
 
+describe('dealScore (market-aware)', () => {
+  it('uses backend market value when present (below market = GREAT)', () => {
+    const target = v({id: 1, price: 18000, marketValueCents: 2200000});
+    const res = dealScore(target, [target]);
+    expect(res.tier).toBe('GREAT');
+    expect(res.label).toMatch(/below market value/);
+  });
+  it('flags above-market pricing as HIGH', () => {
+    const target = v({id: 1, price: 26000, marketValueCents: 2200000});
+    expect(dealScore(target, [target]).tier).toBe('HIGH');
+  });
+  it('around market value is FAIR', () => {
+    const target = v({id: 1, price: 22000, marketValueCents: 2200000});
+    expect(dealScore(target, [target]).tier).toBe('FAIR');
+  });
+});
+
 describe('inferBody', () => {
-  it('classifies trucks, suvs, sport and sedans', () => {
-    expect(inferBody(v({model: 'F-150'}))).toBe('TRUCK');
-    expect(inferBody(v({model: 'RAV4'}))).toBe('SUV');
+  it('prefers the backend bodyType over keyword inference', () => {
+    expect(inferBody(v({model: 'Mustang', bodyType: 'SUV'}))).toBe('SUV');
+    expect(inferBody(v({model: 'Camry', bodyType: 'TRUCK'}))).toBe('TRUCK');
+    expect(inferBody(v({model: 'X', trim: 'Y', bodyType: 'CONVERTIBLE'}))).toBe(
+      'SPORT',
+    );
+  });
+  it('falls back to keyword inference when bodyType is null/OTHER', () => {
+    expect(inferBody(v({model: 'F-150', bodyType: null}))).toBe('TRUCK');
+    expect(inferBody(v({model: 'RAV4', bodyType: 'OTHER'}))).toBe('SUV');
     expect(inferBody(v({model: 'Mustang'}))).toBe('SPORT');
     expect(inferBody(v({model: 'Camry'}))).toBe('SEDAN');
   });

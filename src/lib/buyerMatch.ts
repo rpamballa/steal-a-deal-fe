@@ -20,10 +20,47 @@ export type DealScore = {
  * make+model. Honest and explainable ("cheaper than 9 of 12 similar
  * listings here"). Needs >= 3 peers or it abstains.
  */
+function usd(n: number) {
+  return n.toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
+}
+
 export function dealScore(
   vehicle: Vehicle,
   all: readonly Vehicle[],
 ): DealScore {
+  // Authoritative path: real market value from the backend (cents).
+  if (vehicle.marketValueCents != null && vehicle.marketValueCents > 0) {
+    const market = vehicle.marketValueCents / 100;
+    const delta = vehicle.price - market; // negative = below market
+    const ratio = vehicle.price / market;
+    if (ratio <= 0.95) {
+      return {
+        tier: 'GREAT',
+        betterThan: 0,
+        peers: 0,
+        label: `${usd(Math.abs(delta))} below market value`,
+      };
+    }
+    if (ratio <= 1.05) {
+      return {
+        tier: 'FAIR',
+        betterThan: 0,
+        peers: 0,
+        label: 'Around market value',
+      };
+    }
+    return {
+      tier: 'HIGH',
+      betterThan: 0,
+      peers: 0,
+      label: `${usd(delta)} above market value`,
+    };
+  }
+
   const peers = all.filter(
     other =>
       other.id !== vehicle.id &&
@@ -132,6 +169,23 @@ const SPORT_HINTS = [
 ];
 
 export function inferBody(vehicle: Vehicle): Exclude<BodyPref, 'ANY'> {
+  // Prefer the backend's structured classification when present.
+  switch (vehicle.bodyType) {
+    case 'SEDAN':
+    case 'HATCHBACK':
+      return 'SEDAN';
+    case 'SUV':
+    case 'VAN':
+    case 'WAGON':
+      return 'SUV';
+    case 'TRUCK':
+      return 'TRUCK';
+    case 'COUPE':
+    case 'CONVERTIBLE':
+      return 'SPORT';
+    default:
+      break; // OTHER / null -> fall back to keyword inference
+  }
   const hay = `${vehicle.model} ${vehicle.trim}`.toLowerCase();
   if (TRUCK_HINTS.some(h => hay.includes(h))) return 'TRUCK';
   if (SPORT_HINTS.some(h => hay.includes(h))) return 'SPORT';

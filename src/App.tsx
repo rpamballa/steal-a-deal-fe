@@ -6,6 +6,7 @@ import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
 import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
 import {DealScoreBadge} from './components/DealScoreBadge';
+import {GarageView} from './components/GarageView';
 import {Lightbox} from './components/Lightbox';
 import {MatchQuiz} from './components/MatchQuiz';
 import {Pagination} from './components/Pagination';
@@ -66,6 +67,9 @@ import {
   type DealerInbox,
   type DealerOnboardingView,
   type DealerPortal,
+  type Favorite,
+  type SavedSearch,
+  type SavedSearchInput,
   type DealerQueue,
   type Dashboard,
   type DocumentStatus,
@@ -92,6 +96,7 @@ type NavView =
   | 'inventory'
   | 'vehicle'
   | 'compare'
+  | 'garage'
   | 'leads'
   | 'appointments'
   | 'deal-room'
@@ -105,6 +110,7 @@ const navItems: Array<{id: NavView; label: string; roles?: Array<CurrentUser['ro
   {id: 'inventory', label: 'Inventory'},
   {id: 'vehicle', label: 'Vehicle Detail', roles: ['BUYER', 'ADMIN']},
   {id: 'compare', label: 'Compare', roles: ['BUYER']},
+  {id: 'garage', label: 'My Garage', roles: ['BUYER']},
   {id: 'deal-room', label: 'Deal Room', roles: ['BUYER', 'DEALER', 'ADMIN']},
   {id: 'deal-desk', label: 'Deal Desk', roles: ['DEALER', 'ADMIN']},
   {id: 'leads', label: 'Leads', roles: ['DEALER', 'ADMIN']},
@@ -144,6 +150,7 @@ const NAV_VIEWS: NavView[] = [
   'inventory',
   'vehicle',
   'compare',
+  'garage',
   'leads',
   'appointments',
   'deal-room',
@@ -284,6 +291,155 @@ export default function App() {
     },
     [currentUser.data],
   );
+
+  // Buyer engagement: favorites + saved searches (auth-only; guarded
+  // loaders avoid spurious 401s while browsing as a guest).
+  const loadFavorites = useCallback(
+    () =>
+      currentUser.data
+        ? api.listFavorites()
+        : Promise.resolve([] as Favorite[]),
+    [currentUser.data],
+  );
+  const favorites = useRemoteResource(loadFavorites);
+  const favoriteIds = useMemo(
+    () => new Set((favorites.data ?? []).map(f => f.vehicleId)),
+    [favorites.data],
+  );
+  const loadSavedSearches = useCallback(
+    () =>
+      currentUser.data
+        ? api.listSavedSearches()
+        : Promise.resolve([] as SavedSearch[]),
+    [currentUser.data],
+  );
+  const savedSearches = useRemoteResource(loadSavedSearches);
+  const [pendingFavoriteId, setPendingFavoriteId] = useState<number | null>(
+    null,
+  );
+  const toggleFavorite = useCallback(
+    async (vehicleId: number) => {
+      if (
+        !requireAuth('Create a free account to save cars to your garage.')
+      ) {
+        return;
+      }
+      setPendingFavoriteId(vehicleId);
+      try {
+        if (favoriteIds.has(vehicleId)) {
+          await api.removeFavorite(vehicleId);
+          toast.success('Removed from your garage.');
+        } else {
+          await api.addFavorite(vehicleId);
+          toast.success('Saved to your garage.');
+        }
+        await favorites.refresh();
+      } catch (error) {
+        toast.error(toUserMessage(error));
+      } finally {
+        setPendingFavoriteId(null);
+      }
+    },
+    [favoriteIds, favorites, requireAuth],
+  );
+
+  const applySavedSearch = useCallback(
+    (s: SavedSearch) => {
+      const q = s.query;
+      setListingQuery(q.q ?? '');
+      setFilterMake(q.make ?? '');
+      setFilterModel(q.model ?? '');
+      setFilterMinYear(q.minYear ?? 0);
+      setFilterMaxMileage(q.maxMileage ?? 0);
+      setListingStatus(
+        q.status && q.status !== 'LIVE'
+          ? (q.status as 'ALL' | Vehicle['status'])
+          : 'LIVE',
+      );
+      if (q.maxPrice) setMaxListingPrice(q.maxPrice);
+      setInventoryPage(1);
+      setActiveView('inventory');
+      toast.success(`Applied “${s.name}”.`);
+    },
+    [],
+  );
+
+  const buildCurrentQuery = useCallback(
+    (): SavedSearchInput['query'] => ({
+      q: listingQuery.trim() || null,
+      make: filterMake || null,
+      model: filterModel || null,
+      minPrice: null,
+      maxPrice: maxListingPrice,
+      minYear: filterMinYear || null,
+      maxMileage: filterMaxMileage || null,
+      status: listingStatus === 'ALL' ? null : listingStatus,
+    }),
+    [
+      listingQuery,
+      filterMake,
+      filterModel,
+      maxListingPrice,
+      filterMinYear,
+      filterMaxMileage,
+      listingStatus,
+    ],
+  );
+
+  const saveCurrentSearch = useCallback(async () => {
+    if (!requireAuth('Create a free account to save searches and alerts.')) {
+      return;
+    }
+    const query = buildCurrentQuery();
+    const name =
+      [filterMake, filterModel, listingQuery.trim()]
+        .filter(Boolean)
+        .join(' ') || 'My search';
+    try {
+      await api.createSavedSearch({name, query, alertOnPriceDrop: true});
+      await savedSearches.refresh();
+      toast.success(`Saved “${name}” — manage it in My Garage.`);
+    } catch (error) {
+      toast.error(toUserMessage(error));
+    }
+  }, [
+    requireAuth,
+    buildCurrentQuery,
+    filterMake,
+    filterModel,
+    listingQuery,
+    savedSearches,
+  ]);
+
+  const toggleSavedSearchAlert = useCallback(
+    async (s: SavedSearch) => {
+      try {
+        await api.updateSavedSearch(s.id, {
+          name: s.name,
+          query: s.query,
+          alertOnPriceDrop: !s.alertOnPriceDrop,
+        });
+        await savedSearches.refresh();
+      } catch (error) {
+        toast.error(toUserMessage(error));
+      }
+    },
+    [savedSearches],
+  );
+
+  const deleteSavedSearch = useCallback(
+    async (id: number) => {
+      try {
+        await api.deleteSavedSearch(id);
+        await savedSearches.refresh();
+        toast.success('Saved search deleted.');
+      } catch (error) {
+        toast.error(toUserMessage(error));
+      }
+    },
+    [savedSearches],
+  );
+
   const participantContext = useMemo(() => {
     if (!currentUser.data) {
       return {type: 'BUYER' as ParticipantType, reference: 'buyer@example.com'};
@@ -1703,6 +1859,15 @@ export default function App() {
               readinessSteps,
               readinessHidden,
               onHideReadiness: () => setReadinessHidden(true),
+              favorites: favorites.data ?? [],
+              savedSearches: savedSearches.data ?? [],
+              favoriteIds,
+              pendingFavoriteId,
+              onToggleFavorite: toggleFavorite,
+              onSaveSearch: saveCurrentSearch,
+              onApplySavedSearch: applySavedSearch,
+              onToggleSavedSearchAlert: toggleSavedSearchAlert,
+              onDeleteSavedSearch: deleteSavedSearch,
               inventoryPage,
               inventoryPageCount,
               inventoryPageSize: INVENTORY_PAGE_SIZE,
@@ -1957,6 +2122,15 @@ function renderMainPanel(args: {
   readinessSteps: ReadinessStep[];
   readinessHidden: boolean;
   onHideReadiness: () => void;
+  favorites: Favorite[];
+  savedSearches: SavedSearch[];
+  favoriteIds: Set<number>;
+  pendingFavoriteId: number | null;
+  onToggleFavorite: (vehicleId: number) => void;
+  onSaveSearch: () => void;
+  onApplySavedSearch: (search: SavedSearch) => void;
+  onToggleSavedSearchAlert: (search: SavedSearch) => void;
+  onDeleteSavedSearch: (id: number) => void;
   inventoryPage: number;
   inventoryPageCount: number;
   inventoryPageSize: number;
@@ -2129,6 +2303,15 @@ function renderMainPanel(args: {
     readinessSteps,
     readinessHidden,
     onHideReadiness,
+    favorites,
+    savedSearches,
+    favoriteIds,
+    pendingFavoriteId,
+    onToggleFavorite,
+    onSaveSearch,
+    onApplySavedSearch,
+    onToggleSavedSearchAlert,
+    onDeleteSavedSearch,
     inventoryPage,
     inventoryPageCount,
     inventoryPageSize,
@@ -2379,6 +2562,12 @@ function renderMainPanel(args: {
                       ✨ Find your match
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="secondary-button compact-button"
+                    onClick={onSaveSearch}>
+                    ♥ Save this search
+                  </button>
                 </div>
               </section>
 
@@ -2566,7 +2755,26 @@ function renderMainPanel(args: {
                         <span className={`listing-badge status-${vehicle.status.toLowerCase()}`}>
                           {vehicle.status}
                         </span>
-                        <strong>{formatCurrency(vehicle.price)}</strong>
+                        <div className="listing-card-top-right">
+                          <strong>{formatCurrency(vehicle.price)}</strong>
+                          <button
+                            type="button"
+                            className={
+                              favoriteIds.has(vehicle.id)
+                                ? 'fav-heart on'
+                                : 'fav-heart'
+                            }
+                            aria-pressed={favoriteIds.has(vehicle.id)}
+                            aria-label={
+                              favoriteIds.has(vehicle.id)
+                                ? 'Remove from garage'
+                                : 'Save to garage'
+                            }
+                            disabled={pendingFavoriteId === vehicle.id}
+                            onClick={() => onToggleFavorite(vehicle.id)}>
+                            {favoriteIds.has(vehicle.id) ? '♥' : '♡'}
+                          </button>
+                        </div>
                       </div>
                       <h4>
                         {vehicle.modelYear} {vehicle.make} {vehicle.model}
@@ -2699,10 +2907,42 @@ function renderMainPanel(args: {
                   </button>
                 </div>
                 <div className="detail-stack">
+                  <button
+                    type="button"
+                    className={
+                      favoriteIds.has(vehicleDetail.data.id)
+                        ? 'fav-button on'
+                        : 'fav-button'
+                    }
+                    aria-pressed={favoriteIds.has(vehicleDetail.data.id)}
+                    disabled={pendingFavoriteId === vehicleDetail.data.id}
+                    onClick={() => onToggleFavorite(vehicleDetail.data!.id)}>
+                    {favoriteIds.has(vehicleDetail.data.id)
+                      ? '♥ Saved to your garage'
+                      : '♡ Save to garage'}
+                  </button>
                   <DetailRow label="VIN" value={vehicleDetail.data.vin} />
                   <DetailRow label="Dealer" value={vehicleDetail.data.dealerName} />
                   <DetailRow label="Status" value={vehicleDetail.data.status} />
                   <DetailRow label="Mileage" value={formatMileage(vehicleDetail.data.mileage)} />
+                  {vehicleDetail.data.bodyType || vehicleDetail.data.fuelType ? (
+                    <DetailRow
+                      label="Type"
+                      value={[
+                        vehicleDetail.data.bodyType
+                          ? formatLabel(vehicleDetail.data.bodyType)
+                          : null,
+                        vehicleDetail.data.fuelType
+                          ? formatLabel(vehicleDetail.data.fuelType)
+                          : null,
+                        vehicleDetail.data.combinedMpg
+                          ? `${vehicleDetail.data.combinedMpg} MPG`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    />
+                  ) : null}
                   <DetailRow label="Price" value={formatCurrency(vehicleDetail.data.price)} />
                   {(() => {
                     const insight = vehicleInsights.get(vehicleDetail.data.id);
@@ -2738,6 +2978,29 @@ function renderMainPanel(args: {
               <EmptyState message="Select a vehicle from the inventory views." />
             )}
           </ResourceBlock>
+        </>
+      );
+    case 'garage':
+      return (
+        <>
+          <PanelHeader
+            title="My Garage"
+            detail="Cars you've saved and searches you're tracking for price drops."
+          />
+          <GarageView
+            favorites={favorites}
+            savedSearches={savedSearches}
+            pendingFavoriteId={pendingFavoriteId}
+            onOpenVehicle={vehicleId => {
+              onSelectVehicle(vehicleId);
+              onNavigate('vehicle');
+            }}
+            onRemoveFavorite={onToggleFavorite}
+            onApplySearch={onApplySavedSearch}
+            onToggleAlert={onToggleSavedSearchAlert}
+            onDeleteSearch={onDeleteSavedSearch}
+            onBrowse={() => onNavigate('inventory')}
+          />
         </>
       );
     case 'compare':

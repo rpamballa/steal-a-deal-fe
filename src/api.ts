@@ -58,6 +58,25 @@ export type UpdateDealerRequest = CreateDealerRequest;
 
 export type VehicleStatus = 'DRAFT' | 'LIVE' | 'RESERVED' | 'SOLD';
 
+export type BodyType =
+  | 'SEDAN'
+  | 'SUV'
+  | 'TRUCK'
+  | 'COUPE'
+  | 'HATCHBACK'
+  | 'VAN'
+  | 'CONVERTIBLE'
+  | 'WAGON'
+  | 'OTHER';
+
+export type FuelType =
+  | 'GAS'
+  | 'HYBRID'
+  | 'PLUGIN_HYBRID'
+  | 'ELECTRIC'
+  | 'DIESEL'
+  | 'OTHER';
+
 export type Vehicle = {
   id: number;
   dealerId: number;
@@ -72,6 +91,44 @@ export type Vehicle = {
   mileage: number;
   price: number;
   status: VehicleStatus;
+  // Additive backend classification (nullable; older rows return null).
+  bodyType?: BodyType | null;
+  fuelType?: FuelType | null;
+  combinedMpg?: number | null;
+  marketValueCents?: number | null;
+};
+
+export type Favorite = {
+  id: number;
+  vehicleId: number;
+  vehicle: Vehicle;
+  createdAt: string;
+};
+
+export type SavedSearchQuery = {
+  q?: string | null;
+  make?: string | null;
+  model?: string | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  minYear?: number | null;
+  maxMileage?: number | null;
+  status?: VehicleStatus | null;
+};
+
+export type SavedSearchInput = {
+  name: string;
+  query: SavedSearchQuery;
+  alertOnPriceDrop: boolean;
+};
+
+export type SavedSearch = {
+  id: number;
+  name: string;
+  query: SavedSearchQuery;
+  alertOnPriceDrop: boolean;
+  createdAt: string;
+  lastMatchedCount: number;
 };
 
 export type CreateVehicleRequest = {
@@ -1101,6 +1158,31 @@ export const api = {
       {method: 'POST', body: form},
     );
   },
+
+  // ── Buyer engagement (token-scoped: /api/me/*, BUYER only) ──
+  listFavorites: () => request<Favorite[]>('/api/me/favorites'),
+  addFavorite: (vehicleId: number) =>
+    request<Favorite>('/api/me/favorites', {
+      method: 'POST',
+      body: JSON.stringify({vehicleId}),
+    }),
+  removeFavorite: (vehicleId: number) =>
+    request<void>(`/api/me/favorites/${vehicleId}`, {method: 'DELETE'}),
+
+  listSavedSearches: () =>
+    request<SavedSearch[]>('/api/me/saved-searches'),
+  createSavedSearch: (input: SavedSearchInput) =>
+    request<SavedSearch>('/api/me/saved-searches', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateSavedSearch: (id: number, input: SavedSearchInput) =>
+    request<SavedSearch>(`/api/me/saved-searches/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  deleteSavedSearch: (id: number) =>
+    request<void>(`/api/me/saved-searches/${id}`, {method: 'DELETE'}),
 };
 
 /** Public photo URL for a stored vehicle photo key. */
