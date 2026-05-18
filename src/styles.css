@@ -2611,3 +2611,208 @@ textarea:focus-visible,
     justify-content: center;
   }
 }
+
+/* ============================================================
+   LIGHT THEME — buyer & guest surfaces (conversion/trust).
+   Dark remains the default for dealer/admin (untouched above).
+   Scoped to html[data-theme='light'] set by App from persona.
+   Brand accents (indigo #6366F1, gold #EAB308) are preserved.
+   ============================================================ */
+html[data-theme='light'] {
+  background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.06), transparent 36%),
+    #F8FAFC;
+  color: #0F172A;
+}
+
+html[data-theme='light'] .sidebar {
+  background: #FFFFFF;
+  border-right: 1px solid #E2E8F0;
+  backdrop-filter: none;
+}
+
+html[data-theme='light'] .panel,
+html[data-theme='light'] .summary-box,
+html[data-theme='light'] .vehicle-summary,
+html[data-theme='light'] .vehicle-tile,
+html[data-theme='light'] .table-card,
+html[data-theme='light'] .hero,
+html[data-theme='light'] .ops-card,
+html[data-theme='light'] .onboarding-card,
+html[data-theme='light'] .payment-slider,
+html[data-theme='light'] .auth-screen-card,
+html[data-theme='light'] .dialog,
+html[data-theme='light'] .listing-card,
+html[data-theme='light'] .compare-card,
+html[data-theme='light'] .kanban-card,
+html[data-theme='light'] .deal-banner,
+html[data-theme='light'] .ops-tile {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.06);
+}
+
+html[data-theme='light'] .listing-hero {
+  background:
+    linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(234, 179, 8, 0.08)),
+    #FFFFFF;
+  border: 1px solid #E2E8F0;
+}
+
+/* Text */
+html[data-theme='light'] .brand-title,
+html[data-theme='light'] .hero-title,
+html[data-theme='light'] .listing-title,
+html[data-theme='light'] .panel-title,
+html[data-theme='light'] .auth-screen-title,
+html[data-theme='light'] .dialog-title,
+html[data-theme='light'] h1,
+html[data-theme='light'] h2,
+html[data-theme='light'] h3,
+html[data-theme='light'] h4,
+html[data-theme='light'] .listing-card h4,
+html[data-theme='light'] .nav-item,
+html[data-theme='light'] .secondary-button,
+html[data-theme='light'] .field input,
+html[data-theme='light'] .field select,
+html[data-theme='light'] .field textarea,
+html[data-theme='light'] .data-table,
+html[data-theme='light'] .detail-row strong,
+html[data-theme='light'] .task-list-body strong,
+html[data-theme='light'] .pagination-summary strong {
+  color: #0F172A;
+}
+
+html[data-theme='light'] .brand-copy,
+html[data-theme='light'] .hero-copy,
+html[data-theme='light'] .panel-detail,
+html[data-theme='light'] .summary-meta,
+html[data-theme='light'] .detail-row span,
+html[data-theme='light'] .empty-state,
+html[data-theme='light'] .listing-copy,
+html[data-theme='light'] .listing-trim,
+html[data-theme='light'] .listing-meta,
+html[data-theme='light'] .field-hint,
+html[data-theme='light'] .field span,
+html[data-theme='light'] .auth-screen-sub,
+html[data-theme='light'] .auth-panel-title,
+html[data-theme='light'] .pagination-summary,
+html[data-theme='light'] .platform-disclaimer,
+html[data-theme='light'] .muted-text,
+html[data-theme='light'] .lead-contact span {
+  color: #475569;
+}
+
+/* Sidebar nav / buttons / inputs / chips */
+html[data-theme='light'] .nav-item {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+}
+html[data-theme='light'] .nav-item:hover {
+  border-color: #6366F1;
+}
+html[data-theme='light'] .nav-item.active {
+  background: linear-gradient(135deg, #6366F1, #8184F7);
+  color: #FFFFFF;
+}
+html[data-theme='light'] .secondary-button {
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  color: #0F172A;
+}
+html[data-theme='light'] .ghost-button {
+  color: #475569;
+}
+html[data-theme='light'] .field input,
+html[data-theme='light'] .field select,
+html[data-theme='light'] .field textarea,
+html[data-theme='light'] .pagination-button,
+html[data-theme='light'] .pagination-page {
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+}
+html[data-theme='light'] .field input::placeholder {
+  color: #94A3B8;
+}
+html[data-theme='light'] .listing-chip,
+html[data-theme='light'] .listing-summary span {
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  color: #334155;
+}
+html[data-theme='light'] .pagination-page.active {
+  background: #6366F1;
+  border-color: #6366F1;
+  color: #FFFFFF;
+}
+
+/* Tables */
+html[data-theme='light'] .data-table th {
+  color: #475569;
+  border-bottom: 1px solid #E2E8F0;
+}
+html[data-theme='light'] .data-table td {
+  border-bottom: 1px solid #F1F5F9;
+}
+
+/* Notices keep semantic meaning on light */
+html[data-theme='light'] .notice.success {
+  background: #DCFCE7;
+  color: #166534;
+}
+html[data-theme='light'] .notice.error {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
+/* Dialog overlay lighter; lightbox stays dark (photo viewer). */
+html[data-theme='light'] .dialog-overlay {
+  background: rgba(15, 23, 42, 0.45);
+}
+html[data-theme='light'] .toast {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  color: #0F172A;
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.12);
+}
+html[data-theme='light'] .toast-message {
+  color: #0F172A;
+}
+
+/* Skeleton + disclaimer on light */
+html[data-theme='light'] .skeleton-block {
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+}
+html[data-theme='light'] .skeleton-line {
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.15) 25%,
+    rgba(148, 163, 184, 0.35) 37%,
+    rgba(148, 163, 184, 0.15) 63%
+  );
+  background-size: 400% 100%;
+}
+html[data-theme='light'] .platform-disclaimer-inline {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+}
+html[data-theme='light'] .platform-disclaimer-footer {
+  border-top: 1px solid #E2E8F0;
+}
+
+/* Gold financial figures: nudge to a darker amber for contrast on white */
+html[data-theme='light'] .summary-box strong,
+html[data-theme='light'] .payment-slider-amount,
+html[data-theme='light'] .ops-tile-value,
+html[data-theme='light'] .onboarding-percent strong,
+html[data-theme='light'] .listing-card-top strong,
+html[data-theme='light'] .kanban-card-title,
+html[data-theme='light'] .receipt-row strong {
+  color: #B45309;
+}
+
+/* Status badges readable on light */
+html[data-theme='light'] .listing-badge {
+  border: 1px solid #E2E8F0;
+}

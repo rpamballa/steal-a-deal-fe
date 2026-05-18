@@ -219,6 +219,18 @@ export default function App() {
   const authChecked = !currentUser.loading || currentUser.data != null;
   const isGuest = authChecked && !currentUser.data;
   const wasAuthed = React.useRef(false);
+
+  // Buyers & guests shop on a light canvas (conversion/trust);
+  // dealer/admin operate on the dark ops theme.
+  const themeMode =
+    currentUser.data?.role === 'DEALER' || currentUser.data?.role === 'ADMIN'
+      ? 'dark'
+      : 'light';
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = themeMode;
+    }
+  }, [themeMode]);
   useEffect(() => {
     if (currentUser.data) {
       wasAuthed.current = true;
