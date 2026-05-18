@@ -6,6 +6,7 @@ import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
 import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
 import {DealScoreBadge} from './components/DealScoreBadge';
+import {DealerInventoryView} from './components/DealerInventoryView';
 import {DealerProfileView} from './components/DealerProfileView';
 import {GarageView} from './components/GarageView';
 import {
@@ -2613,7 +2614,38 @@ function renderMainPanel(args: {
           </div>
         </>
       );
-    case 'inventory':
+    case 'inventory': {
+      const invRole = currentUser.data?.role;
+      if (invRole === 'DEALER' || invRole === 'ADMIN') {
+        const myDealerId = currentUser.data?.dealerId ?? null;
+        const ownVehicles = (vehicles.data ?? []).filter(v =>
+          invRole === 'ADMIN'
+            ? true
+            : myDealerId != null && v.dealerId === myDealerId,
+        );
+        return (
+          <>
+            <PanelHeader
+              title="Manage inventory"
+              detail="Add, edit, and publish the vehicles buyers can see."
+            />
+            <ResourceBlock state={vehicles}>
+              <DealerInventoryView
+                vehicles={ownVehicles}
+                vehicleForm={vehicleForm}
+                editingVehicleId={editingVehicleId}
+                pendingVehicleSave={pendingVehicleSave}
+                pendingVehiclePublishId={pendingVehiclePublishId}
+                onVehicleFormChange={onVehicleFormChange}
+                onSaveVehicle={onSaveVehicle}
+                onCancelVehicleEdit={onCancelVehicleEdit}
+                onStartVehicleEdit={onStartVehicleEdit}
+                onToggleVehiclePublish={onToggleVehiclePublish}
+              />
+            </ResourceBlock>
+          </>
+        );
+      }
       return (
         <>
           <PanelHeader
@@ -2972,6 +3004,7 @@ function renderMainPanel(args: {
           ) : null}
         </>
       );
+    }
     case 'vehicle':
       return (
         <>

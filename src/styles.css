@@ -51,6 +51,12 @@ button {
   background: rgba(6, 12, 22, 0.78);
   border-right: 1px solid rgba(148, 163, 184, 0.15);
   backdrop-filter: blur(18px);
+  /* Own scroll area, pinned to the viewport, so the sign-in panel
+     is always reachable without scrolling the whole page. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .brand-kicker,
@@ -104,7 +110,12 @@ button {
   display: grid;
   gap: 0.7rem;
   margin-top: auto;
-  padding-top: 1rem;
+  /* Float the sign-in / account panel to the bottom of the sticky
+     sidebar so it stays visible without scrolling. */
+  position: sticky;
+  bottom: 0;
+  padding: 1rem 0 0.25rem;
+  background: rgba(6, 12, 22, 0.92);
   border-top: 1px solid rgba(148, 163, 184, 0.15);
 }
 
@@ -1987,6 +1998,15 @@ button {
     border-bottom: 1px solid rgba(148, 163, 184, 0.15);
     padding: 1.25rem 1rem;
     gap: 1rem;
+    /* Stacked layout on mobile: sidebar flows normally. */
+    position: static;
+    height: auto;
+    overflow: visible;
+  }
+
+  .auth-panel {
+    position: static;
+    margin-top: 0;
   }
 
   .content {
@@ -2629,6 +2649,10 @@ html[data-theme='light'] .sidebar {
   background: #FFFFFF;
   border-right: 1px solid #E2E8F0;
   backdrop-filter: none;
+}
+html[data-theme='light'] .auth-panel {
+  background: #FFFFFF;
+  border-top: 1px solid #E2E8F0;
 }
 
 html[data-theme='light'] .panel,
