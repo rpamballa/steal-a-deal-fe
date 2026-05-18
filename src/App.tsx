@@ -7,7 +7,13 @@ import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
 import {DealScoreBadge} from './components/DealScoreBadge';
 import {GarageView} from './components/GarageView';
-import {AboutView, TermsView} from './components/SiteInfo';
+import {
+  AboutView,
+  ContactView,
+  FaqView,
+  PrivacyView,
+  TermsView,
+} from './components/SiteInfo';
 import {Lightbox} from './components/Lightbox';
 import {MatchQuiz} from './components/MatchQuiz';
 import {Pagination} from './components/Pagination';
@@ -105,7 +111,10 @@ type NavView =
   | 'dealers'
   | 'reporting'
   | 'about'
-  | 'terms';
+  | 'terms'
+  | 'privacy'
+  | 'faq'
+  | 'contact';
 
 
 const navItems: Array<{id: NavView; label: string; roles?: Array<CurrentUser['role']>}> = [
@@ -162,6 +171,9 @@ const NAV_VIEWS: NavView[] = [
   'reporting',
   'about',
   'terms',
+  'privacy',
+  'faq',
+  'contact',
 ];
 
 export default function App() {
@@ -279,7 +291,13 @@ export default function App() {
   }, [currentRole, isGuest]);
   // Footer-only informational pages are valid for every role even
   // though they are not in the sidebar nav.
-  const STANDALONE_VIEWS: NavView[] = ['about', 'terms'];
+  const STANDALONE_VIEWS: NavView[] = [
+    'about',
+    'terms',
+    'privacy',
+    'faq',
+    'contact',
+  ];
   useEffect(() => {
     if (
       !STANDALONE_VIEWS.includes(activeView) &&
@@ -4547,7 +4565,37 @@ function renderMainPanel(args: {
             title="Terms & Conditions"
             detail="The terms that govern use of the StealADeal platform."
           />
-          <TermsView />
+          <TermsView onNavigate={onNavigate} />
+        </>
+      );
+    case 'privacy':
+      return (
+        <>
+          <PanelHeader
+            title="Privacy Policy"
+            detail="What we collect and how it is used."
+          />
+          <PrivacyView />
+        </>
+      );
+    case 'faq':
+      return (
+        <>
+          <PanelHeader
+            title="Help & FAQ"
+            detail="Common questions about buying and selling on StealADeal."
+          />
+          <FaqView />
+        </>
+      );
+    case 'contact':
+      return (
+        <>
+          <PanelHeader
+            title="Contact"
+            detail="Reach the StealADeal team."
+          />
+          <ContactView />
         </>
       );
     default:

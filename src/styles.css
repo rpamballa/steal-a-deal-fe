@@ -3200,3 +3200,19 @@ html[data-theme='light'] .info-fineprint {
   color: #64748B !important;
   border-top-color: #E2E8F0;
 }
+
+/* ── FAQ list ─────────────────────────────────────────────────── */
+.faq-list { display: grid; gap: 0.85rem; margin: 0.5rem 0 0; }
+.faq-item {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+.faq-item dt { font-weight: 700; margin-bottom: 0.35rem; }
+.faq-item dd { margin: 0; color: #CBD5E1; line-height: 1.55; }
+html[data-theme='light'] .faq-item {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+}
+html[data-theme='light'] .faq-item dd { color: #334155; }

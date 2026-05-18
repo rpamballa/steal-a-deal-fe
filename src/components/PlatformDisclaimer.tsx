@@ -3,7 +3,9 @@ import React from 'react';
 type Props = {
   dealerName?: string | null;
   variant?: 'footer' | 'inline';
-  onNavigate?: (view: 'about' | 'terms') => void;
+  onNavigate?: (
+    view: 'about' | 'terms' | 'privacy' | 'faq' | 'contact',
+  ) => void;
 };
 
 /**
@@ -45,19 +47,25 @@ export function PlatformDisclaimer({
       </p>
       {onNavigate ? (
         <p className="platform-disclaimer-links">
-          <button
-            type="button"
-            className="footer-link"
-            onClick={() => onNavigate('about')}>
-            About
-          </button>
-          <span aria-hidden="true">·</span>
-          <button
-            type="button"
-            className="footer-link"
-            onClick={() => onNavigate('terms')}>
-            Terms &amp; Conditions
-          </button>
+          {(
+            [
+              ['about', 'About'],
+              ['faq', 'Help & FAQ'],
+              ['contact', 'Contact'],
+              ['terms', 'Terms'],
+              ['privacy', 'Privacy'],
+            ] as const
+          ).map(([view, label], i) => (
+            <React.Fragment key={view}>
+              {i > 0 ? <span aria-hidden="true">·</span> : null}
+              <button
+                type="button"
+                className="footer-link"
+                onClick={() => onNavigate(view)}>
+                {label}
+              </button>
+            </React.Fragment>
+          ))}
         </p>
       ) : null}
     </footer>
