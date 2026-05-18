@@ -2740,6 +2740,22 @@ html[data-theme='light'] .listing-summary span {
   border: 1px solid #E2E8F0;
   color: #334155;
 }
+html[data-theme='light'] .pagination-button,
+html[data-theme='light'] .pagination-page {
+  color: #334155;
+}
+html[data-theme='light'] .pagination-button:not(:disabled):hover,
+html[data-theme='light'] .pagination-page:not(.active):hover {
+  border-color: #6366F1;
+  color: #6366F1;
+}
+html[data-theme='light'] .pagination-button:disabled {
+  color: #94A3B8;
+  opacity: 1;
+}
+html[data-theme='light'] .pagination-gap {
+  color: #94A3B8;
+}
 html[data-theme='light'] .pagination-page.active {
   background: #6366F1;
   border-color: #6366F1;
