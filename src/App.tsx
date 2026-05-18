@@ -9,6 +9,7 @@ import {DealScoreBadge} from './components/DealScoreBadge';
 import {Lightbox} from './components/Lightbox';
 import {MatchQuiz} from './components/MatchQuiz';
 import {Pagination} from './components/Pagination';
+import {ReadinessMeter, type ReadinessStep} from './components/ReadinessMeter';
 import {
   dealScore,
   matchPercent,
@@ -172,6 +173,11 @@ export default function App() {
   const [authReason, setAuthReason] = useState<string | null>(null);
   const [matchAnswers, setMatchAnswers] = useState<MatchAnswers | null>(null);
   const [quizOpen, setQuizOpen] = useState(false);
+  const [readinessAck, setReadinessAck] = useState({
+    financing: false,
+    paperwork: false,
+  });
+  const [readinessHidden, setReadinessHidden] = useState(false);
   const [compareVehicleIds, setCompareVehicleIds] = useState<number[]>([]);
   const toggleCompareVehicle = useCallback((vehicleId: number) => {
     setCompareVehicleIds(current => {
@@ -634,6 +640,48 @@ export default function App() {
         inventoryPage * INVENTORY_PAGE_SIZE,
       ),
     [rankedListingVehicles, inventoryPage],
+  );
+
+  const readinessSteps = useMemo(
+    () => [
+      {
+        id: 'budget',
+        label: 'Know your all-in budget',
+        done: matchAnswers != null,
+        help: 'Your real budget includes sales tax, title, and fees — not just the sticker price. Use "Find your match" to set an all-in number; the budget slider already factors in an estimated tax.',
+      },
+      {
+        id: 'financing',
+        label: 'Understand monthly payment basics',
+        done: readinessAck.financing,
+        ackable: true,
+        onAck: () =>
+          setReadinessAck(prev => ({...prev, financing: true})),
+        help: 'Your payment is driven by price, down payment, loan term, and APR. A bigger down payment or shorter term lowers total interest. Open any car to try the payment estimator — it is an estimate, not an offer.',
+      },
+      {
+        id: 'compare',
+        label: 'Compare at least 2 cars',
+        done: compareVehicleIds.length >= 2,
+        help: 'Comparing side by side keeps you from anchoring on the first car you liked. Tick "Compare" on a few listings, then open the Compare view — the best value in each row is highlighted.',
+      },
+      {
+        id: 'paperwork',
+        label: 'Know the paperwork you’ll need',
+        done: readinessAck.paperwork,
+        ackable: true,
+        onAck: () =>
+          setReadinessAck(prev => ({...prev, paperwork: true})),
+        help: "You'll typically need a driver's license, proof of insurance, the buyer's agreement, and an odometer disclosure. The dealer prepares these — you review and sign in the deal room.",
+      },
+      {
+        id: 'shortlist',
+        label: 'Shortlist a car to act on',
+        done: selectedVehicleId != null,
+        help: 'Open a vehicle’s details to shortlist it. From there you can ask the dealer a question, book a test drive, or start a purchase — no obligation.',
+      },
+    ],
+    [matchAnswers, readinessAck, compareVehicleIds.length, selectedVehicleId],
   );
 
   const compareVehicles = useMemo(() => {
@@ -1652,6 +1700,9 @@ export default function App() {
                 setMatchAnswers(null);
                 setInventoryPage(1);
               },
+              readinessSteps,
+              readinessHidden,
+              onHideReadiness: () => setReadinessHidden(true),
               inventoryPage,
               inventoryPageCount,
               inventoryPageSize: INVENTORY_PAGE_SIZE,
@@ -1903,6 +1954,9 @@ function renderMainPanel(args: {
   matchActive: boolean;
   onOpenQuiz: () => void;
   onClearMatch: () => void;
+  readinessSteps: ReadinessStep[];
+  readinessHidden: boolean;
+  onHideReadiness: () => void;
   inventoryPage: number;
   inventoryPageCount: number;
   inventoryPageSize: number;
@@ -2072,6 +2126,9 @@ function renderMainPanel(args: {
     matchActive,
     onOpenQuiz,
     onClearMatch,
+    readinessSteps,
+    readinessHidden,
+    onHideReadiness,
     inventoryPage,
     inventoryPageCount,
     inventoryPageSize,
@@ -2453,6 +2510,15 @@ function renderMainPanel(args: {
                 ))}
               </div>
 
+              {currentUser.data?.role !== 'DEALER' &&
+              currentUser.data?.role !== 'ADMIN' &&
+              !readinessHidden ? (
+                <ReadinessMeter
+                  steps={readinessSteps}
+                  onDismiss={onHideReadiness}
+                />
+              ) : null}
+
               {buyerListingVehicles.length > 0 ? (
                 <div className="listing-grid">
                   {pagedListingVehicles.map(vehicle => (
@@ -2683,6 +2749,7 @@ function renderMainPanel(args: {
           />
           <CompareView
             vehicles={compareVehicles}
+            insights={vehicleInsights}
             onRemove={onRemoveCompare}
             onClear={onClearCompare}
             onBrowse={() => onNavigate('inventory')}

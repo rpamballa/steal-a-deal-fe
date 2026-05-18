@@ -1,14 +1,27 @@
 import React from 'react';
 
 import type {Vehicle} from '../api';
+import type {DealScore} from '../lib/buyerMatch';
+import {DealScoreBadge} from './DealScoreBadge';
+
+type Insight = {deal: DealScore; matchPct: number | null};
 
 type Props = {
   vehicles: Vehicle[];
+  insights?: Map<number, Insight>;
   onRemove: (vehicleId: number) => void;
   onSelect?: (vehicleId: number) => void;
   onClear: () => void;
   onBrowse: () => void;
 };
+
+function formatUsd(value: number) {
+  return value.toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
+}
 
 type Row = {
   label: string;
@@ -18,6 +31,7 @@ type Row = {
 
 export function CompareView({
   vehicles,
+  insights,
   onRemove,
   onSelect,
   onClear,
@@ -44,9 +58,22 @@ export function CompareView({
     {label: 'Status', values: vehicles.map(v => v.status)},
   ];
 
+  const cheapest = vehicles.reduce((a, b) => (b.price < a.price ? b : a));
+  const priciest = vehicles.reduce((a, b) => (b.price > a.price ? b : a));
+  const spread = priciest.price - cheapest.price;
+
   return (
     <div className="compare-view">
       <header className="compare-view-header">
+        {vehicles.length >= 2 && spread > 0 ? (
+          <div className="compare-savings" role="note">
+            <strong>{formatUsd(spread)}</strong> spread in this set — the{' '}
+            {cheapest.modelYear} {cheapest.make} {cheapest.model} is the lowest
+            price here, {formatUsd(spread)} less than the{' '}
+            {priciest.make} {priciest.model}. Lowest price isn’t always best
+            value — check miles, year, and the deal score below.
+          </div>
+        ) : null}
         <div className="compare-view-actions">
           <button type="button" className="secondary-button" onClick={onBrowse}>
             Add another
@@ -107,6 +134,46 @@ export function CompareView({
             </React.Fragment>
           );
         })}
+
+        {insights ? (
+          <React.Fragment key="deal-score">
+            <div className="compare-row-label">Deal score</div>
+            {vehicles.map(vehicle => {
+              const deal = insights.get(vehicle.id)?.deal;
+              return (
+                <div key={`deal-${vehicle.id}`} className="compare-row-value">
+                  {deal && deal.tier ? (
+                    <DealScoreBadge score={deal} />
+                  ) : (
+                    <span className="compare-na">Not enough comps</span>
+                  )}
+                </div>
+              );
+            })}
+          </React.Fragment>
+        ) : null}
+
+        {insights &&
+        vehicles.some(v => insights.get(v.id)?.matchPct != null) ? (
+          <React.Fragment key="match">
+            <div className="compare-row-label">Match</div>
+            {vehicles.map(vehicle => {
+              const pct = insights.get(vehicle.id)?.matchPct ?? null;
+              return (
+                <div key={`match-${vehicle.id}`} className="compare-row-value">
+                  {pct == null ? (
+                    <span className="compare-na">—</span>
+                  ) : (
+                    <span
+                      className={pct >= 75 ? 'match-pct strong' : 'match-pct'}>
+                      {pct}%
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </React.Fragment>
+        ) : null}
       </div>
     </div>
   );
