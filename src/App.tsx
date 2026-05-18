@@ -6,6 +6,7 @@ import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
 import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
 import {Lightbox} from './components/Lightbox';
+import {Pagination} from './components/Pagination';
 import {PlatformDisclaimer} from './components/PlatformDisclaimer';
 import {
   DetailRow,
@@ -127,6 +128,7 @@ const MAX_COMPARE = 3;
 // Client-side estimate so the budget slider reflects an all-in number
 // (final tax is set by the dealer at contract). ~7% blended sales tax.
 const EST_TAX_RATE = 0.07;
+const INVENTORY_PAGE_SIZE = 12;
 
 const NAV_VIEWS: NavView[] = [
   'overview',
@@ -183,6 +185,7 @@ export default function App() {
   const [filterModel, setFilterModel] = useState('');
   const [filterMinYear, setFilterMinYear] = useState(0);
   const [filterMaxMileage, setFilterMaxMileage] = useState(0);
+  const [inventoryPage, setInventoryPage] = useState(1);
   const [listingActiveImages, setListingActiveImages] = useState<Record<number, string>>({});
   const [detailActiveImage, setDetailActiveImage] = useState<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
@@ -549,6 +552,37 @@ export default function App() {
     filterMaxMileage,
     vehicles.data,
   ]);
+
+  const inventoryPageCount = Math.max(
+    1,
+    Math.ceil(buyerListingVehicles.length / INVENTORY_PAGE_SIZE),
+  );
+  // Clamp the page when the filtered result set shrinks/changes.
+  useEffect(() => {
+    if (inventoryPage > inventoryPageCount) {
+      setInventoryPage(1);
+    }
+  }, [inventoryPage, inventoryPageCount]);
+  // Reset to page 1 whenever the filters/search change.
+  useEffect(() => {
+    setInventoryPage(1);
+  }, [
+    listingQuery,
+    listingStatus,
+    maxListingPrice,
+    filterMake,
+    filterModel,
+    filterMinYear,
+    filterMaxMileage,
+  ]);
+  const pagedListingVehicles = useMemo(
+    () =>
+      buyerListingVehicles.slice(
+        (inventoryPage - 1) * INVENTORY_PAGE_SIZE,
+        inventoryPage * INVENTORY_PAGE_SIZE,
+      ),
+    [buyerListingVehicles, inventoryPage],
+  );
 
   const compareVehicles = useMemo(() => {
     const lookup = new Map((vehicles.data ?? []).map(vehicle => [vehicle.id, vehicle]));
@@ -1547,6 +1581,11 @@ export default function App() {
               liveVehicles,
               vehicles,
               buyerListingVehicles,
+              pagedListingVehicles,
+              inventoryPage,
+              inventoryPageCount,
+              inventoryPageSize: INVENTORY_PAGE_SIZE,
+              onInventoryPageChange: setInventoryPage,
               compareVehicles,
               compareVehicleIds,
               onToggleCompare: (vehicleId: number) => {
@@ -1789,6 +1828,11 @@ function renderMainPanel(args: {
   liveVehicles: AsyncState<Vehicle[]>;
   vehicles: AsyncState<Vehicle[]>;
   buyerListingVehicles: Vehicle[];
+  pagedListingVehicles: Vehicle[];
+  inventoryPage: number;
+  inventoryPageCount: number;
+  inventoryPageSize: number;
+  onInventoryPageChange: (page: number) => void;
   compareVehicles: Vehicle[];
   compareVehicleIds: number[];
   onToggleCompare: (vehicleId: number) => void;
@@ -1949,6 +1993,11 @@ function renderMainPanel(args: {
     liveVehicles,
     vehicles,
     buyerListingVehicles,
+    pagedListingVehicles,
+    inventoryPage,
+    inventoryPageCount,
+    inventoryPageSize,
+    onInventoryPageChange,
     compareVehicles,
     compareVehicleIds,
     onToggleCompare,
@@ -2166,7 +2215,10 @@ function renderMainPanel(args: {
                   </p>
                 </div>
                 <div className="listing-summary">
-                  <span>{buyerListingVehicles.length} matches</span>
+                  <span>
+                    {buyerListingVehicles.length} match
+                    {buyerListingVehicles.length === 1 ? '' : 'es'}
+                  </span>
                   <span>Max budget {formatCurrency(maxListingPrice)}</span>
                   <span>Status {listingStatus}</span>
                 </div>
@@ -2302,7 +2354,7 @@ function renderMainPanel(args: {
 
               {buyerListingVehicles.length > 0 ? (
                 <div className="listing-grid">
-                  {buyerListingVehicles.map(vehicle => (
+                  {pagedListingVehicles.map(vehicle => (
                     <article key={vehicle.id} className="listing-card">
                       {(() => {
                         const galleryImages = getVehicleGallery(vehicle);
@@ -2396,6 +2448,20 @@ function renderMainPanel(args: {
               ) : (
                 <EmptyState message="No vehicles match the current filters. Expand the budget or clear the search." />
               )}
+              {buyerListingVehicles.length > 0 ? (
+                <Pagination
+                  page={inventoryPage}
+                  pageCount={inventoryPageCount}
+                  total={buyerListingVehicles.length}
+                  pageSize={inventoryPageSize}
+                  onPageChange={page => {
+                    onInventoryPageChange(page);
+                    if (typeof window !== 'undefined') {
+                      window.scrollTo({top: 0, behavior: 'smooth'});
+                    }
+                  }}
+                />
+              ) : null}
             </div>
           </ResourceBlock>
           {featureFlags.buyerCompare ? (
