@@ -6,6 +6,7 @@ import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
 import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
 import {DealScoreBadge} from './components/DealScoreBadge';
+import {DealerProfileView} from './components/DealerProfileView';
 import {GarageView} from './components/GarageView';
 import {
   AboutView,
@@ -114,7 +115,8 @@ type NavView =
   | 'terms'
   | 'privacy'
   | 'faq'
-  | 'contact';
+  | 'contact'
+  | 'dealer-profile';
 
 
 const navItems: Array<{id: NavView; label: string; roles?: Array<CurrentUser['role']>}> = [
@@ -174,6 +176,7 @@ const NAV_VIEWS: NavView[] = [
   'privacy',
   'faq',
   'contact',
+  'dealer-profile',
 ];
 
 export default function App() {
@@ -187,6 +190,7 @@ export default function App() {
     initialUrl.vehicle,
   );
   const [depositConfirmOpen, setDepositConfirmOpen] = useState(false);
+  const [dealerProfileId, setDealerProfileId] = useState<number | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [lightbox, setLightbox] = useState<{
     images: string[];
@@ -297,6 +301,7 @@ export default function App() {
     'privacy',
     'faq',
     'contact',
+    'dealer-profile',
   ];
   useEffect(() => {
     if (
@@ -634,6 +639,22 @@ export default function App() {
         : Promise.resolve([] as PortalDocumentItem[]),
     [selectedDealerId],
   );
+  const loadDealerProfile = useCallback(
+    () =>
+      dealerProfileId
+        ? api.getDealer(dealerProfileId)
+        : Promise.resolve(null),
+    [dealerProfileId],
+  );
+  const loadDealerProfileVehicles = useCallback(
+    () =>
+      dealerProfileId
+        ? api.listVehicles({dealerId: dealerProfileId})
+        : Promise.resolve([] as Vehicle[]),
+    [dealerProfileId],
+  );
+  const dealerProfile = useRemoteResource(loadDealerProfile);
+  const dealerProfileVehicles = useRemoteResource(loadDealerProfileVehicles);
   const dealerPortal = useRemoteResource(loadDealerPortal);
   const dealerOnboarding = useRemoteResource(loadDealerOnboarding);
   const dealerQueue = useRemoteResource(loadDealerQueue);
@@ -1947,6 +1968,12 @@ export default function App() {
               onSelectDealer: setSelectedDealerId,
               onOpenVehicle: () => setActiveView('vehicle'),
               onNavigate: setActiveView,
+              dealerProfile,
+              dealerProfileVehicles,
+              onOpenDealerProfile: (id: number) => {
+                setDealerProfileId(id);
+                setActiveView('dealer-profile');
+              },
               listingQuery,
               listingStatus,
               maxListingPrice,
@@ -2205,6 +2232,9 @@ function renderMainPanel(args: {
   onSelectDealer: (dealerId: number | null) => void;
   onOpenVehicle: () => void;
   onNavigate: (view: NavView) => void;
+  dealerProfile: AsyncState<Dealer | null>;
+  dealerProfileVehicles: AsyncState<Vehicle[]>;
+  onOpenDealerProfile: (dealerId: number) => void;
   listingQuery: string;
   listingStatus: 'ALL' | Vehicle['status'];
   maxListingPrice: number;
@@ -2386,6 +2416,9 @@ function renderMainPanel(args: {
     onSelectDealer,
     onOpenVehicle,
     onNavigate,
+    dealerProfile,
+    dealerProfileVehicles,
+    onOpenDealerProfile,
     listingQuery,
     listingStatus,
     maxListingPrice,
@@ -2955,7 +2988,17 @@ function renderMainPanel(args: {
                       : '♡ Save to garage'}
                   </button>
                   <DetailRow label="VIN" value={vehicleDetail.data.vin} />
-                  <DetailRow label="Dealer" value={vehicleDetail.data.dealerName} />
+                  <div className="detail-row">
+                    <span>Dealer</span>
+                    <button
+                      type="button"
+                      className="footer-link detail-dealer-link"
+                      onClick={() =>
+                        onOpenDealerProfile(vehicleDetail.data!.dealerId)
+                      }>
+                      {vehicleDetail.data.dealerName} ›
+                    </button>
+                  </div>
                   <DetailRow label="Status" value={vehicleDetail.data.status} />
                   <DetailRow label="Mileage" value={formatMileage(vehicleDetail.data.mileage)} />
                   {vehicleDetail.data.bodyType || vehicleDetail.data.fuelType ? (
@@ -3001,6 +3044,38 @@ function renderMainPanel(args: {
                   {featureFlags.buyerPaymentSlider ? (
                     <PaymentSlider vehiclePrice={vehicleDetail.data.price} />
                   ) : null}
+                  <section
+                    className="disclosures"
+                    aria-label="Vehicle history & disclosures">
+                    <p className="card-kicker">History &amp; disclosures</p>
+                    <ul className="disclosures-list">
+                      <li>
+                        <strong>VIN</strong>
+                        <span>{vehicleDetail.data.vin}</span>
+                      </li>
+                      <li>
+                        <strong>Odometer (as listed)</strong>
+                        <span>
+                          {formatMileage(vehicleDetail.data.mileage)}
+                        </span>
+                      </li>
+                      <li>
+                        <strong>Listing status</strong>
+                        <span>{formatLabel(vehicleDetail.data.status)}</span>
+                      </li>
+                    </ul>
+                    <p className="disclosures-note">
+                      A full vehicle history report (prior owners, accidents,
+                      title brands) is provided by the selling dealer. At
+                      purchase, the dealer captures the digital{' '}
+                      <strong>odometer disclosure</strong> and an{' '}
+                      <strong>AS-IS disclosure</strong> (unless a written
+                      warranty is offered) in the deal room. Use “Ask a
+                      question” to request the dealer’s history report before
+                      you commit. StealADeal does not generate or warrant
+                      vehicle history.
+                    </p>
+                  </section>
                   <PlatformDisclaimer
                     variant="inline"
                     dealerName={vehicleDetail.data.dealerName}
@@ -4544,6 +4619,30 @@ function renderMainPanel(args: {
               </table>
             ) : (
               <EmptyState message="No notifications found for this buyer reference." />
+            )}
+          </ResourceBlock>
+        </>
+      );
+    case 'dealer-profile':
+      return (
+        <>
+          <PanelHeader
+            title="About this dealership"
+            detail="The independent, licensed dealer selling this vehicle."
+          />
+          <ResourceBlock state={dealerProfile}>
+            {dealerProfile.data ? (
+              <DealerProfileView
+                dealer={dealerProfile.data}
+                vehicles={dealerProfileVehicles.data ?? []}
+                onOpenVehicle={vehicleId => {
+                  onSelectVehicle(vehicleId);
+                  onNavigate('vehicle');
+                }}
+                onBrowse={() => onNavigate('inventory')}
+              />
+            ) : (
+              <EmptyState message="Select a vehicle to view its dealer." />
             )}
           </ResourceBlock>
         </>
