@@ -3334,3 +3334,42 @@ html[data-theme='light'] .disclosures { border-color: #E2E8F0; }
   color: #0F172A;
   min-width: 160px;
 }
+
+/* ── Vehicle history report ───────────────────────────────────── */
+.history-report {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 10px;
+  background: rgba(34, 197, 94, 0.06);
+}
+.history-report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.history-badge {
+  background: #22C55E;
+  color: #04210F;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+.history-source { font-size: 0.8rem; color: #94A3B8; }
+.history-flag {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #EF4444;
+}
+.history-report a { justify-self: start; text-decoration: none; }
+
+html[data-theme='light'] .history-report {
+  background: #ECFDF5;
+  border-color: #A7F3D0;
+}
+html[data-theme='light'] .history-source { color: #475569; }

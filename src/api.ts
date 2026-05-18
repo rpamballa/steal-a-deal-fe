@@ -236,11 +236,37 @@ export type Deal = {
   updatedAt: string;
 };
 
+// Reconciled to the backend enum (verified): adds the digital
+// odometer + AS-IS disclosures captured in the deal room.
 export type DocumentType =
   | 'BUYER_AGREEMENT'
   | 'DRIVER_LICENSE'
   | 'INSURANCE_PROOF'
-  | 'TITLE_DISCLOSURE';
+  | 'TITLE_DISCLOSURE'
+  | 'ODOMETER_DISCLOSURE'
+  | 'AS_IS_DISCLOSURE';
+
+export type HistoryReportSource = 'PROVIDER' | 'DEALER_UPLOAD';
+
+export type VehicleHistorySummary = {
+  ownerCount: number | null;
+  accidentCount: number | null;
+  titleBrand: string | null;
+  lastReportedOdometer: number | null;
+  odometerRollbackSuspected: boolean | null;
+  openRecallCount: number | null;
+  serviceRecordCount: number | null;
+};
+
+export type VehicleHistoryReport = {
+  vehicleId: number;
+  available: boolean;
+  source: HistoryReportSource | null;
+  providerName: string | null;
+  reportUrl: string | null;
+  generatedAt: string | null;
+  summary: VehicleHistorySummary | null;
+};
 
 export type DocumentStatus = 'REQUESTED' | 'UPLOADED' | 'APPROVED' | 'REJECTED';
 
@@ -1183,7 +1209,28 @@ export const api = {
     }),
   deleteSavedSearch: (id: number) =>
     request<void>(`/api/me/saved-searches/${id}`, {method: 'DELETE'}),
+
+  // ── Vehicle history (public; provider- or dealer-sourced) ────
+  getVehicleHistory: (vehicleId: number) =>
+    request<VehicleHistoryReport>(`/api/vehicles/${vehicleId}/history`),
+  uploadVehicleHistory: (
+    dealerId: number,
+    vehicleId: number,
+    file: File,
+  ) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<VehicleHistoryReport>(
+      `/api/dealers/${dealerId}/inventory/${vehicleId}/history`,
+      {method: 'POST', body: form},
+    );
+  },
 };
+
+/** Public URL to a vehicle's full history report PDF (streamed). */
+export function vehicleHistoryReportUrl(vehicleId: number): string {
+  return `${API_BASE_URL}/api/vehicles/${vehicleId}/history/report`;
+}
 
 /** Public photo URL for a stored vehicle photo key. */
 export function vehiclePhotoUrl(vehicleId: number, key: string): string {

@@ -61,6 +61,7 @@ import {
   setAuthSession,
   clearAuthSession,
   MAX_VEHICLE_PHOTOS,
+  vehicleHistoryReportUrl,
   type Appointment,
   type CreateVehicleRequest,
   type CurrentUser,
@@ -78,6 +79,7 @@ import {
   type Favorite,
   type SavedSearch,
   type SavedSearchInput,
+  type VehicleHistoryReport,
   type DealerQueue,
   type Dashboard,
   type DocumentStatus,
@@ -717,6 +719,14 @@ export default function App() {
     [selectedVehicleId],
   );
   const vehicleDetail = useRemoteResource(loadVehicleDetail);
+  const loadVehicleHistory = useCallback(
+    () =>
+      selectedVehicleId
+        ? api.getVehicleHistory(selectedVehicleId)
+        : Promise.resolve(null as VehicleHistoryReport | null),
+    [selectedVehicleId],
+  );
+  const vehicleHistory = useRemoteResource(loadVehicleHistory);
 
   const filteredAppointments = useMemo(
     () =>
@@ -1956,6 +1966,7 @@ export default function App() {
               onClearCompare: clearCompare,
               selectedVehicle,
               vehicleDetail,
+              vehicleHistory,
               leads,
               appointments,
               deals,
@@ -2221,6 +2232,7 @@ function renderMainPanel(args: {
   onClearCompare: () => void;
   selectedVehicle: Vehicle | null;
   vehicleDetail: AsyncState<Vehicle | null>;
+  vehicleHistory: AsyncState<VehicleHistoryReport | null>;
   leads: AsyncState<Lead[]>;
   appointments: AsyncState<Appointment[]>;
   deals: AsyncState<Deal[]>;
@@ -2406,6 +2418,7 @@ function renderMainPanel(args: {
     onClearCompare,
     selectedVehicle,
     vehicleDetail,
+    vehicleHistory,
     leads,
     appointments,
     deals,
@@ -3084,16 +3097,106 @@ function renderMainPanel(args: {
                         <span>{formatLabel(vehicleDetail.data.status)}</span>
                       </li>
                     </ul>
+
+                    {(() => {
+                      const h = vehicleHistory.data;
+                      if (h && h.available && h.summary) {
+                        const s = h.summary;
+                        const rows: [string, string | null][] = [
+                          [
+                            'Previous owners',
+                            s.ownerCount != null ? String(s.ownerCount) : null,
+                          ],
+                          [
+                            'Reported accidents',
+                            s.accidentCount != null
+                              ? String(s.accidentCount)
+                              : null,
+                          ],
+                          ['Title', s.titleBrand],
+                          [
+                            'Last reported odometer',
+                            s.lastReportedOdometer != null
+                              ? formatMileage(s.lastReportedOdometer)
+                              : null,
+                          ],
+                          [
+                            'Open recalls',
+                            s.openRecallCount != null
+                              ? String(s.openRecallCount)
+                              : null,
+                          ],
+                          [
+                            'Service records',
+                            s.serviceRecordCount != null
+                              ? String(s.serviceRecordCount)
+                              : null,
+                          ],
+                        ];
+                        return (
+                          <div className="history-report">
+                            <div className="history-report-head">
+                              <span className="history-badge">
+                                History report
+                              </span>
+                              <span className="history-source">
+                                {h.providerName
+                                  ? `Source: ${h.providerName}`
+                                  : h.source === 'DEALER_UPLOAD'
+                                    ? 'Provided by the dealer'
+                                    : 'Report on file'}
+                              </span>
+                            </div>
+                            {s.odometerRollbackSuspected ? (
+                              <p className="history-flag">
+                                ⚠ Possible odometer discrepancy reported —
+                                verify with the dealer.
+                              </p>
+                            ) : null}
+                            <ul className="disclosures-list">
+                              {rows
+                                .filter(([, v]) => v != null)
+                                .map(([label, value]) => (
+                                  <li key={label}>
+                                    <strong>{label}</strong>
+                                    <span>{value}</span>
+                                  </li>
+                                ))}
+                            </ul>
+                            <a
+                              className="secondary-button compact-button"
+                              href={
+                                h.reportUrl &&
+                                /^https?:\/\//.test(h.reportUrl)
+                                  ? h.reportUrl
+                                  : vehicleHistoryReportUrl(
+                                      vehicleDetail.data.id,
+                                    )
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer">
+                              View full report (PDF)
+                            </a>
+                          </div>
+                        );
+                      }
+                      return (
+                        <p className="disclosures-note">
+                          No history report is on file for this car yet. A
+                          full report (prior owners, accidents, title brands)
+                          is provided by the selling dealer — use “Ask a
+                          question” to request it before you commit.
+                          StealADeal does not generate or warrant vehicle
+                          history.
+                        </p>
+                      );
+                    })()}
+
                     <p className="disclosures-note">
-                      A full vehicle history report (prior owners, accidents,
-                      title brands) is provided by the selling dealer. At
-                      purchase, the dealer captures the digital{' '}
+                      At purchase, the dealer captures the digital{' '}
                       <strong>odometer disclosure</strong> and an{' '}
                       <strong>AS-IS disclosure</strong> (unless a written
-                      warranty is offered) in the deal room. Use “Ask a
-                      question” to request the dealer’s history report before
-                      you commit. StealADeal does not generate or warrant
-                      vehicle history.
+                      warranty is offered) in the deal room.
                     </p>
                   </section>
                   <PlatformDisclaimer
