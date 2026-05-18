@@ -2832,3 +2832,111 @@ html[data-theme='light'] .receipt-row strong {
 html[data-theme='light'] .listing-badge {
   border: 1px solid #E2E8F0;
 }
+
+/* ── Buyer gamification: match % + deal score + quiz ──────────── */
+.insight-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.insight-row-detail { margin: 0.25rem 0 0.5rem; }
+
+.match-pct {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #6366F1;
+}
+.match-pct.strong {
+  background: #6366F1;
+  color: #FFFFFF;
+}
+
+.deal-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+}
+.deal-score-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.deal-score-detail { font-weight: 500; opacity: 0.85; }
+.deal-score-great { background: rgba(34, 197, 94, 0.16); color: #16A34A; }
+.deal-score-fair { background: rgba(234, 179, 8, 0.18); color: #B45309; }
+.deal-score-high { background: rgba(148, 163, 184, 0.2); color: #64748B; }
+
+.match-cta { white-space: nowrap; }
+.match-active-row {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.5rem;
+  background: none !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+.quiz-dialog { width: min(520px, 100%); }
+.quiz-sub {
+  margin: -0.25rem 0 1rem;
+  color: #94A3B8;
+  font-size: 0.85rem;
+}
+.quiz-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+}
+.quiz-field > span {
+  font-size: 0.85rem;
+  color: #CBD5E1;
+}
+.quiz-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.quiz-chip {
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: transparent;
+  color: #F1F5F9;
+  font-size: 0.82rem;
+}
+.quiz-chip.active {
+  background: #6366F1;
+  border-color: #6366F1;
+  color: #FFFFFF;
+  font-weight: 700;
+}
+.quiz-field input[type='range'] { accent-color: #6366F1; }
+
+/* Light-theme adjustments */
+html[data-theme='light'] .quiz-sub,
+html[data-theme='light'] .quiz-field > span {
+  color: #475569;
+}
+html[data-theme='light'] .quiz-chip {
+  border: 1px solid #CBD5E1;
+  color: #0F172A;
+}
+html[data-theme='light'] .quiz-chip.active {
+  background: #6366F1;
+  color: #FFFFFF;
+}
+html[data-theme='light'] .deal-score-great { background: #DCFCE7; color: #166534; }
+html[data-theme='light'] .deal-score-fair { background: #FEF3C7; color: #92400E; }
+html[data-theme='light'] .deal-score-high { background: #F1F5F9; color: #475569; }
+html[data-theme='light'] .match-pct { background: rgba(99,102,241,0.12); color: #4F46E5; }
+html[data-theme='light'] .match-pct.strong { background: #6366F1; color: #FFFFFF; }

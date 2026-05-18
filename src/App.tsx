@@ -5,8 +5,16 @@ import {toUserMessage} from './lib/userMessage';
 import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
 import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
+import {DealScoreBadge} from './components/DealScoreBadge';
 import {Lightbox} from './components/Lightbox';
+import {MatchQuiz} from './components/MatchQuiz';
 import {Pagination} from './components/Pagination';
+import {
+  dealScore,
+  matchPercent,
+  type DealScore,
+  type MatchAnswers,
+} from './lib/buyerMatch';
 import {PlatformDisclaimer} from './components/PlatformDisclaimer';
 import {
   DetailRow,
@@ -162,6 +170,8 @@ export default function App() {
   } | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [authReason, setAuthReason] = useState<string | null>(null);
+  const [matchAnswers, setMatchAnswers] = useState<MatchAnswers | null>(null);
+  const [quizOpen, setQuizOpen] = useState(false);
   const [compareVehicleIds, setCompareVehicleIds] = useState<number[]>([]);
   const toggleCompareVehicle = useCallback((vehicleId: number) => {
     setCompareVehicleIds(current => {
@@ -587,13 +597,43 @@ export default function App() {
     filterMinYear,
     filterMaxMileage,
   ]);
+  // Per-vehicle buyer insights (deal score always; match % when the
+  // quiz has been taken). Transparent, derived from listed inventory.
+  const vehicleInsights = useMemo(() => {
+    const all = vehicles.data ?? [];
+    const map = new Map<
+      number,
+      {deal: ReturnType<typeof dealScore>; matchPct: number | null}
+    >();
+    for (const vehicle of all) {
+      map.set(vehicle.id, {
+        deal: dealScore(vehicle, all),
+        matchPct: matchAnswers
+          ? matchPercent(vehicle, matchAnswers, all)
+          : null,
+      });
+    }
+    return map;
+  }, [vehicles.data, matchAnswers]);
+
+  // When the quiz is active, rank the filtered list by match % so the
+  // best fits surface first (applied before pagination).
+  const rankedListingVehicles = useMemo(() => {
+    if (!matchAnswers) return buyerListingVehicles;
+    return [...buyerListingVehicles].sort(
+      (a, b) =>
+        (vehicleInsights.get(b.id)?.matchPct ?? 0) -
+        (vehicleInsights.get(a.id)?.matchPct ?? 0),
+    );
+  }, [buyerListingVehicles, matchAnswers, vehicleInsights]);
+
   const pagedListingVehicles = useMemo(
     () =>
-      buyerListingVehicles.slice(
+      rankedListingVehicles.slice(
         (inventoryPage - 1) * INVENTORY_PAGE_SIZE,
         inventoryPage * INVENTORY_PAGE_SIZE,
       ),
-    [buyerListingVehicles, inventoryPage],
+    [rankedListingVehicles, inventoryPage],
   );
 
   const compareVehicles = useMemo(() => {
@@ -1475,6 +1515,17 @@ export default function App() {
         onClose={() => setLightbox(null)}
       />
     ) : null}
+    <MatchQuiz
+      open={quizOpen}
+      initial={matchAnswers}
+      onClose={() => setQuizOpen(false)}
+      onApply={answers => {
+        setMatchAnswers(answers);
+        setQuizOpen(false);
+        setInventoryPage(1);
+        setActiveView('inventory');
+      }}
+    />
     <a href="#main-content" className="skip-link">
       Skip to main content
     </a>
@@ -1594,6 +1645,13 @@ export default function App() {
               vehicles,
               buyerListingVehicles,
               pagedListingVehicles,
+              vehicleInsights,
+              matchActive: matchAnswers != null,
+              onOpenQuiz: () => setQuizOpen(true),
+              onClearMatch: () => {
+                setMatchAnswers(null);
+                setInventoryPage(1);
+              },
               inventoryPage,
               inventoryPageCount,
               inventoryPageSize: INVENTORY_PAGE_SIZE,
@@ -1841,6 +1899,10 @@ function renderMainPanel(args: {
   vehicles: AsyncState<Vehicle[]>;
   buyerListingVehicles: Vehicle[];
   pagedListingVehicles: Vehicle[];
+  vehicleInsights: Map<number, {deal: DealScore; matchPct: number | null}>;
+  matchActive: boolean;
+  onOpenQuiz: () => void;
+  onClearMatch: () => void;
   inventoryPage: number;
   inventoryPageCount: number;
   inventoryPageSize: number;
@@ -2006,6 +2068,10 @@ function renderMainPanel(args: {
     vehicles,
     buyerListingVehicles,
     pagedListingVehicles,
+    vehicleInsights,
+    matchActive,
+    onOpenQuiz,
+    onClearMatch,
     inventoryPage,
     inventoryPageCount,
     inventoryPageSize,
@@ -2233,6 +2299,29 @@ function renderMainPanel(args: {
                   </span>
                   <span>Max budget {formatCurrency(maxListingPrice)}</span>
                   <span>Status {listingStatus}</span>
+                  {matchActive ? (
+                    <span className="match-active-row">
+                      <button
+                        type="button"
+                        className="primary-button compact-button"
+                        onClick={onOpenQuiz}>
+                        Edit my match
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={onClearMatch}>
+                        Clear
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="primary-button compact-button match-cta"
+                      onClick={onOpenQuiz}>
+                      ✨ Find your match
+                    </button>
+                  )}
                 </div>
               </section>
 
@@ -2417,6 +2506,30 @@ function renderMainPanel(args: {
                         {vehicle.modelYear} {vehicle.make} {vehicle.model}
                       </h4>
                       <p className="listing-trim">{vehicle.trim}</p>
+                      {(() => {
+                        const insight = vehicleInsights.get(vehicle.id);
+                        const matchPct = insight?.matchPct ?? null;
+                        const deal = insight?.deal;
+                        if (matchPct == null && (!deal || !deal.tier)) {
+                          return null;
+                        }
+                        return (
+                          <div className="insight-row">
+                            {matchPct != null ? (
+                              <span
+                                className={
+                                  matchPct >= 75
+                                    ? 'match-pct strong'
+                                    : 'match-pct'
+                                }
+                                title="How well this fits your quiz answers">
+                                {matchPct}% match
+                              </span>
+                            ) : null}
+                            {deal ? <DealScoreBadge score={deal} /> : null}
+                          </div>
+                        );
+                      })()}
                       <div className="listing-meta">
                         <span>{formatMileage(vehicle.mileage)}</span>
                         <span>{vehicle.dealerName}</span>
@@ -2525,6 +2638,27 @@ function renderMainPanel(args: {
                   <DetailRow label="Status" value={vehicleDetail.data.status} />
                   <DetailRow label="Mileage" value={formatMileage(vehicleDetail.data.mileage)} />
                   <DetailRow label="Price" value={formatCurrency(vehicleDetail.data.price)} />
+                  {(() => {
+                    const insight = vehicleInsights.get(vehicleDetail.data.id);
+                    if (!insight) return null;
+                    return (
+                      <div className="insight-row insight-row-detail">
+                        {insight.matchPct != null ? (
+                          <span
+                            className={
+                              insight.matchPct >= 75
+                                ? 'match-pct strong'
+                                : 'match-pct'
+                            }>
+                            {insight.matchPct}% match for you
+                          </span>
+                        ) : null}
+                        {insight.deal.tier ? (
+                          <DealScoreBadge score={insight.deal} showLabel />
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                   {featureFlags.buyerPaymentSlider ? (
                     <PaymentSlider vehiclePrice={vehicleDetail.data.price} />
                   ) : null}
