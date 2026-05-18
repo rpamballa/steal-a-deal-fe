@@ -52,6 +52,7 @@ import {CompareView} from './components/CompareView';
 import {DealTimeline} from './components/DealTimeline';
 import {KanbanBoard} from './components/KanbanBoard';
 import {NotificationsBell} from './components/NotificationsBell';
+import {DealerDashboard} from './components/DealerDashboard';
 import {OnboardingChecklist} from './components/OnboardingChecklist';
 import {OperationsDashboard} from './components/OperationsDashboard';
 import {PaymentSlider} from './components/PaymentSlider';
@@ -549,6 +550,21 @@ export default function App() {
       setSelectedDealerId(dealers.data?.[0].id ?? null);
     }
   }, [dealers.data, selectedDealerId]);
+
+  // Self-serve: a signed-in DEALER always operates on their own
+  // dealership — no admin dealer picker. Bind dealer-scoped resources
+  // (portal, onboarding, queue, subscription, leads, appointments) to
+  // the JWT's dealerId.
+  useEffect(() => {
+    const u = currentUser.data;
+    if (
+      u?.role === 'DEALER' &&
+      u.dealerId != null &&
+      selectedDealerId !== u.dealerId
+    ) {
+      setSelectedDealerId(u.dealerId);
+    }
+  }, [currentUser.data, selectedDealerId]);
 
   // Keep the URL in sync so deep links, refresh, and Back all work.
   const lastViewRef = React.useRef(activeView);
@@ -2533,6 +2549,27 @@ function renderMainPanel(args: {
 
   switch (activeView) {
     case 'overview':
+      if (currentUser.data?.role === 'DEALER') {
+        return (
+          <>
+            <PanelHeader
+              title="Dashboard"
+              detail="Manage your dealership's activities end to end."
+            />
+            <DealerDashboard
+              dealerName={
+                dealerPortal.data?.overview.dealerName ??
+                currentUser.data.displayName
+              }
+              onboarding={dealerOnboarding.data ?? null}
+              portal={dealerPortal.data ?? null}
+              queue={dealerQueue.data ?? null}
+              subscription={dealerSubscription.data ?? null}
+              onNavigate={onNavigate}
+            />
+          </>
+        );
+      }
       return (
         <>
           <PanelHeader

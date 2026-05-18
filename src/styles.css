@@ -3397,3 +3397,94 @@ html[data-theme='light'] .history-report {
   border-color: #A7F3D0;
 }
 html[data-theme='light'] .history-source { color: #475569; }
+
+/* ── Dealer self-serve dashboard ──────────────────────────────── */
+.dealer-dash { display: grid; gap: 1.5rem; }
+.dealer-dash-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.1rem 1.25rem;
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.06);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+.dealer-dash-title { margin: 0.2rem 0; }
+.dealer-dash-sub { margin: 0; color: #94A3B8; font-size: 0.9rem; max-width: 60ch; }
+.dealer-dash-plan {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.dealer-dash-plan.ok { background: rgba(34,197,94,0.16); color: #22C55E; }
+.dealer-dash-plan.warn { background: rgba(234,179,8,0.18); color: #B45309; }
+.dealer-dash-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+}
+.dealer-dash-action {
+  position: relative;
+  text-align: left;
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: #1E293B;
+  color: inherit;
+}
+.dealer-dash-action:hover { border-color: #6366F1; }
+.dealer-dash-action-label { font-weight: 700; }
+.dealer-dash-action-desc { font-size: 0.82rem; color: #94A3B8; }
+.dealer-dash-action-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.85rem;
+  min-width: 24px;
+  text-align: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #6366F1;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.dealer-dash-queue-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+.dealer-dash-qtile {
+  padding: 0.85rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: #1E293B;
+  display: grid;
+  gap: 0.15rem;
+}
+.dealer-dash-qtile strong { font-size: 1.5rem; }
+.dealer-dash-qtile span { font-size: 0.8rem; color: #94A3B8; }
+.dealer-dash-qtile.good { border-color: rgba(34,197,94,0.4); }
+.dealer-dash-qtile.warn { border-color: rgba(239,68,68,0.45); }
+
+html[data-theme='light'] .dealer-dash-hero {
+  background: #EEF2FF;
+  border-color: #C7D2FE;
+}
+html[data-theme='light'] .dealer-dash-sub,
+html[data-theme='light'] .dealer-dash-action-desc,
+html[data-theme='light'] .dealer-dash-qtile span {
+  color: #475569;
+}
+html[data-theme='light'] .dealer-dash-action,
+html[data-theme='light'] .dealer-dash-qtile {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+}
