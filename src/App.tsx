@@ -1215,6 +1215,47 @@ export default function App() {
     }
   }, [editingVehicleId, liveVehicles, resetVehicleForm, vehicleForm, vehicles]);
 
+  const [pendingVehiclePublishId, setPendingVehiclePublishId] = useState<
+    number | null
+  >(null);
+  const toggleVehiclePublish = useCallback(
+    async (vehicle: Vehicle) => {
+      const next: Vehicle['status'] =
+        vehicle.status === 'LIVE' ? 'DRAFT' : 'LIVE';
+      setPendingVehiclePublishId(vehicle.id);
+      try {
+        await api.updateVehicle(vehicle.id, {
+          dealerId: vehicle.dealerId,
+          vin: vehicle.vin,
+          modelYear: vehicle.modelYear,
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim,
+          imageUrls: vehicle.imageUrls ?? [],
+          mileage: vehicle.mileage,
+          price: vehicle.price,
+          status: next,
+        });
+        setDealerInventoryRows(rows =>
+          rows.map(row =>
+            row.id === vehicle.id ? {...row, status: next} : row,
+          ),
+        );
+        await Promise.all([vehicles.refresh(), liveVehicles.refresh()]);
+        toast.success(
+          `${vehicle.modelYear} ${vehicle.make} ${vehicle.model} ${
+            next === 'LIVE' ? 'published — now visible to buyers' : 'unpublished'
+          }.`,
+        );
+      } catch (error) {
+        toast.error(toUserMessage(error));
+      } finally {
+        setPendingVehiclePublishId(null);
+      }
+    },
+    [liveVehicles, vehicles],
+  );
+
   const saveSubscription = useCallback(async () => {
     if (!selectedDealerId || !subscriptionForm) {
       setDealMessage('Select a dealer with subscription data before saving changes.');
@@ -1613,6 +1654,8 @@ export default function App() {
                 setVehicleForm(current => ({...current, [field]: value}));
               },
               onStartVehicleEdit: startVehicleEdit,
+              onToggleVehiclePublish: toggleVehiclePublish,
+              pendingVehiclePublishId,
               onCancelVehicleEdit: resetVehicleForm,
               onSaveVehicle: saveVehicle,
               onSubscriptionFormChange: setSubscriptionForm,
@@ -1874,6 +1917,8 @@ function renderMainPanel(args: {
     value: string,
   ) => void;
   onStartVehicleEdit: (vehicle: Vehicle) => void;
+  onToggleVehiclePublish: (vehicle: Vehicle) => Promise<void>;
+  pendingVehiclePublishId: number | null;
   onCancelVehicleEdit: () => void;
   onSaveVehicle: () => Promise<void>;
   onSubscriptionFormChange: (
@@ -1993,6 +2038,8 @@ function renderMainPanel(args: {
     onSaveDealer,
     onVehicleFormChange,
     onStartVehicleEdit,
+    onToggleVehiclePublish,
+    pendingVehiclePublishId,
     onCancelVehicleEdit,
     onSaveVehicle,
     onSubscriptionFormChange,
@@ -2684,28 +2731,52 @@ function renderMainPanel(args: {
     case 'leads':
       return (
         <>
-          <PanelHeader title="Lead queue" detail="Buyer inquiries waiting for a response." />
+          <PanelHeader title="Lead inbox" detail="Buyer inquiries waiting for a response. Leads waiting over 24h are flagged." />
           <ResourceBlock state={leads}>
             {(leads.data ?? []).length > 0 ? (
               <table className="data-table">
                 <thead>
                   <tr>
                     <th>Buyer</th>
+                    <th>Contact</th>
                     <th>Vehicle</th>
                     <th>Status</th>
-                    <th>Email</th>
-                    <th>Created</th>
+                    <th>Waiting</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(leads.data ?? []).map(lead => (
-                    <tr key={lead.id}>
-                      <td>{lead.buyerName}</td>
+                  {(leads.data ?? []).map(lead => {
+                    const ageMs = Date.now() - new Date(lead.createdAt).getTime();
+                    const ageHours = Math.max(0, Math.floor(ageMs / 3_600_000));
+                    const open = lead.status !== 'CLOSED';
+                    const stale = open && ageHours >= 24;
+                    const waitingLabel =
+                      !open
+                        ? '—'
+                        : ageHours < 1
+                          ? 'just now'
+                          : ageHours < 24
+                            ? `${ageHours}h`
+                            : `${Math.floor(ageHours / 24)}d`;
+                    return (
+                    <tr key={lead.id} className={stale ? 'lead-row-stale' : undefined}>
+                      <td>
+                        <strong>{lead.buyerName}</strong>
+                      </td>
+                      <td>
+                        <div className="lead-contact">
+                          <span>{lead.buyerEmail}</span>
+                          {lead.buyerPhone ? <span>{lead.buyerPhone}</span> : null}
+                        </div>
+                      </td>
                       <td>#{lead.vehicleId}</td>
-                      <td>{lead.status}</td>
-                      <td>{lead.buyerEmail}</td>
-                      <td>{formatDateTime(lead.createdAt)}</td>
+                      <td>{formatLabel(lead.status)}</td>
+                      <td>
+                        <span className={stale ? 'lead-wait stale' : 'lead-wait'}>
+                          {stale ? `⚠ ${waitingLabel}` : waitingLabel}
+                        </span>
+                      </td>
                       <td>
                         {lead.status === 'CLOSED' ? (
                           <span className="muted-text">Finalized</span>
@@ -2734,7 +2805,8 @@ function renderMainPanel(args: {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             ) : (
@@ -3172,20 +3244,64 @@ function renderMainPanel(args: {
                     <th>Status</th>
                     <th>Mileage</th>
                     <th>Price</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {dealerInventoryRows.map(vehicle => (
+                  {dealerInventoryRows.map(vehicle => {
+                    const isLive = vehicle.status === 'LIVE';
+                    const publishing = pendingVehiclePublishId === vehicle.id;
+                    return (
                     <tr key={vehicle.id}>
                       <td>{vehicle.vin}</td>
                       <td>
                         {vehicle.modelYear} {vehicle.make} {vehicle.model} {vehicle.trim}
                       </td>
-                      <td>{vehicle.status}</td>
+                      <td>
+                        <span
+                          className={`listing-badge status-${vehicle.status.toLowerCase()}`}>
+                          {vehicle.status}
+                        </span>
+                      </td>
                       <td>{formatMileage(vehicle.mileage)}</td>
                       <td>{formatCurrency(vehicle.price)}</td>
+                      <td>
+                        <div className="inline-actions">
+                          {vehicle.status === 'SOLD' ? (
+                            <span className="muted-text">Sold</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className={
+                                isLive
+                                  ? 'secondary-button compact-button'
+                                  : 'primary-button compact-button'
+                              }
+                              disabled={publishing}
+                              onClick={() => {
+                                onToggleVehiclePublish(vehicle).catch(
+                                  (error: unknown) =>
+                                    toast.error(toUserMessage(error)),
+                                );
+                              }}>
+                              {publishing
+                                ? 'Saving…'
+                                : isLive
+                                  ? 'Unpublish'
+                                  : 'Publish'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => onStartVehicleEdit(vehicle)}>
+                            Edit
+                          </button>
+                        </div>
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             ) : dealerInventoryLabel ? (

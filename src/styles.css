@@ -2545,3 +2545,10 @@ textarea:focus-visible,
   .lightbox-overlay { padding: 1rem 0.5rem 5rem; }
   .lightbox-nav { width: 40px; height: 40px; font-size: 1.5rem; }
 }
+
+/* ── Lead inbox ───────────────────────────────────────────────── */
+.lead-contact { display: flex; flex-direction: column; gap: 0.15rem; }
+.lead-contact span { font-size: 0.82rem; color: #94A3B8; }
+.lead-wait { font-size: 0.85rem; color: #94A3B8; }
+.lead-wait.stale { color: #EF4444; font-weight: 700; }
+.lead-row-stale { background: rgba(239, 68, 68, 0.06); }
