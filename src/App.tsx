@@ -5,6 +5,7 @@ import {toUserMessage} from './lib/userMessage';
 import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
 import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
+import {Lightbox} from './components/Lightbox';
 import {PlatformDisclaimer} from './components/PlatformDisclaimer';
 import {CompareDrawer} from './components/CompareDrawer';
 import {CompareView} from './components/CompareView';
@@ -107,6 +108,9 @@ const demoAccounts = [
 ];
 
 const MAX_COMPARE = 3;
+// Client-side estimate so the budget slider reflects an all-in number
+// (final tax is set by the dealer at contract). ~7% blended sales tax.
+const EST_TAX_RATE = 0.07;
 
 const NAV_VIEWS: NavView[] = [
   'overview',
@@ -133,6 +137,11 @@ export default function App() {
   );
   const [depositConfirmOpen, setDepositConfirmOpen] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [lightbox, setLightbox] = useState<{
+    images: string[];
+    index: number;
+    alt: string;
+  } | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [authReason, setAuthReason] = useState<string | null>(null);
   const [compareVehicleIds, setCompareVehicleIds] = useState<number[]>([]);
@@ -154,6 +163,10 @@ export default function App() {
   const [listingQuery, setListingQuery] = useState('');
   const [listingStatus, setListingStatus] = useState<'ALL' | Vehicle['status']>('LIVE');
   const [maxListingPrice, setMaxListingPrice] = useState(45000);
+  const [filterMake, setFilterMake] = useState('');
+  const [filterModel, setFilterModel] = useState('');
+  const [filterMinYear, setFilterMinYear] = useState(0);
+  const [filterMaxMileage, setFilterMaxMileage] = useState(0);
   const [listingActiveImages, setListingActiveImages] = useState<Record<number, string>>({});
   const [detailActiveImage, setDetailActiveImage] = useState<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
@@ -477,7 +490,17 @@ export default function App() {
     return (vehicles.data ?? []).filter(vehicle => {
       const matchesStatus =
         listingStatus === 'ALL' ? true : vehicle.status === listingStatus;
-      const matchesPrice = vehicle.price <= maxListingPrice;
+      // Budget slider is all-in: vehicle price + estimated tax.
+      const matchesPrice =
+        Math.round(vehicle.price * (1 + EST_TAX_RATE)) <= maxListingPrice;
+      const matchesMake =
+        !filterMake || vehicle.make === filterMake;
+      const matchesModel =
+        !filterModel || vehicle.model === filterModel;
+      const matchesYear =
+        !filterMinYear || vehicle.modelYear >= filterMinYear;
+      const matchesMileage =
+        !filterMaxMileage || vehicle.mileage <= filterMaxMileage;
       const haystack = [
         vehicle.make,
         vehicle.model,
@@ -490,9 +513,26 @@ export default function App() {
       const matchesQuery =
         normalizedQuery.length === 0 || haystack.includes(normalizedQuery);
 
-      return matchesStatus && matchesPrice && matchesQuery;
+      return (
+        matchesStatus &&
+        matchesPrice &&
+        matchesMake &&
+        matchesModel &&
+        matchesYear &&
+        matchesMileage &&
+        matchesQuery
+      );
     });
-  }, [listingQuery, listingStatus, maxListingPrice, vehicles.data]);
+  }, [
+    listingQuery,
+    listingStatus,
+    maxListingPrice,
+    filterMake,
+    filterModel,
+    filterMinYear,
+    filterMaxMileage,
+    vehicles.data,
+  ]);
 
   const compareVehicles = useMemo(() => {
     const lookup = new Map((vehicles.data ?? []).map(vehicle => [vehicle.id, vehicle]));
@@ -1308,6 +1348,14 @@ export default function App() {
         payDeposit().catch(() => {});
       }}
     />
+    {lightbox ? (
+      <Lightbox
+        images={lightbox.images}
+        startIndex={lightbox.index}
+        alt={lightbox.alt}
+        onClose={() => setLightbox(null)}
+      />
+    ) : null}
     <a href="#main-content" className="skip-link">
       Skip to main content
     </a>
@@ -1474,9 +1522,22 @@ export default function App() {
               listingQuery,
               listingStatus,
               maxListingPrice,
+              filterMake,
+              filterModel,
+              filterMinYear,
+              filterMaxMileage,
               onListingQueryChange: setListingQuery,
               onListingStatusChange: setListingStatus,
               onMaxListingPriceChange: setMaxListingPrice,
+              onFilterMakeChange: (value: string) => {
+                setFilterMake(value);
+                setFilterModel('');
+              },
+              onFilterModelChange: setFilterModel,
+              onFilterMinYearChange: setFilterMinYear,
+              onFilterMaxMileageChange: setFilterMaxMileage,
+              onOpenLightbox: (images: string[], index: number, alt: string) =>
+                setLightbox({images, index, alt}),
               listingActiveImages,
               onListingActiveImageChange: (vehicleId, imageUrl) => {
                 setListingActiveImages(current => ({...current, [vehicleId]: imageUrl}));
@@ -1693,9 +1754,18 @@ function renderMainPanel(args: {
   listingQuery: string;
   listingStatus: 'ALL' | Vehicle['status'];
   maxListingPrice: number;
+  filterMake: string;
+  filterModel: string;
+  filterMinYear: number;
+  filterMaxMileage: number;
   onListingQueryChange: (value: string) => void;
   onListingStatusChange: (value: 'ALL' | Vehicle['status']) => void;
   onMaxListingPriceChange: (value: number) => void;
+  onFilterMakeChange: (value: string) => void;
+  onFilterModelChange: (value: string) => void;
+  onFilterMinYearChange: (value: number) => void;
+  onFilterMaxMileageChange: (value: number) => void;
+  onOpenLightbox: (images: string[], index: number, alt: string) => void;
   listingActiveImages: Record<number, string>;
   onListingActiveImageChange: (vehicleId: number, imageUrl: string) => void;
   detailActiveImage: string | null;
@@ -1842,9 +1912,18 @@ function renderMainPanel(args: {
     listingQuery,
     listingStatus,
     maxListingPrice,
+    filterMake,
+    filterModel,
+    filterMinYear,
+    filterMaxMileage,
     onListingQueryChange,
     onListingStatusChange,
     onMaxListingPriceChange,
+    onFilterMakeChange,
+    onFilterModelChange,
+    onFilterMinYearChange,
+    onFilterMaxMileageChange,
+    onOpenLightbox,
     listingActiveImages,
     onListingActiveImageChange,
     detailActiveImage,
@@ -2014,43 +2093,120 @@ function renderMainPanel(args: {
                 </div>
               </section>
 
-              <section className="listing-toolbar">
-                <label className="field">
-                  <span>Search make, model, trim, dealer</span>
-                  <input
-                    value={listingQuery}
-                    onChange={event => onListingQueryChange(event.target.value)}
-                    placeholder="Try Honda, Tesla, family SUV..."
-                  />
-                </label>
+              {(() => {
+                const all = vehicles.data ?? [];
+                const makes = Array.from(
+                  new Set(all.map(v => v.make).filter(Boolean)),
+                ).sort();
+                const models = Array.from(
+                  new Set(
+                    all
+                      .filter(v => !filterMake || v.make === filterMake)
+                      .map(v => v.model)
+                      .filter(Boolean),
+                  ),
+                ).sort();
+                return (
+                  <section className="listing-toolbar">
+                    <label className="field">
+                      <span>Search</span>
+                      <input
+                        value={listingQuery}
+                        onChange={event => onListingQueryChange(event.target.value)}
+                        placeholder="Try Honda, Tesla, family SUV..."
+                      />
+                    </label>
 
-                <label className="field compact">
-                  <span>Status</span>
-                  <select
-                    value={listingStatus}
-                    onChange={event =>
-                      onListingStatusChange(event.target.value as 'ALL' | Vehicle['status'])
-                    }>
-                    <option value="ALL">All</option>
-                    <option value="LIVE">Live</option>
-                    <option value="RESERVED">Reserved</option>
-                    <option value="SOLD">Sold</option>
-                    <option value="DRAFT">Draft</option>
-                  </select>
-                </label>
+                    <label className="field compact">
+                      <span>Make</span>
+                      <select
+                        value={filterMake}
+                        onChange={event => onFilterMakeChange(event.target.value)}>
+                        <option value="">Any make</option>
+                        {makes.map(make => (
+                          <option key={make} value={make}>
+                            {make}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                <label className="field compact">
-                  <span>Max price</span>
-                  <input
-                    type="range"
-                    min="10000"
-                    max="90000"
-                    step="2500"
-                    value={maxListingPrice}
-                    onChange={event => onMaxListingPriceChange(Number(event.target.value))}
-                  />
-                </label>
-              </section>
+                    <label className="field compact">
+                      <span>Model</span>
+                      <select
+                        value={filterModel}
+                        disabled={models.length === 0}
+                        onChange={event => onFilterModelChange(event.target.value)}>
+                        <option value="">Any model</option>
+                        {models.map(model => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="field compact">
+                      <span>Min year</span>
+                      <input
+                        type="number"
+                        min={1990}
+                        max={2030}
+                        placeholder="Any"
+                        value={filterMinYear || ''}
+                        onChange={event =>
+                          onFilterMinYearChange(Number(event.target.value) || 0)
+                        }
+                      />
+                    </label>
+
+                    <label className="field compact">
+                      <span>Max mileage</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={5000}
+                        placeholder="Any"
+                        value={filterMaxMileage || ''}
+                        onChange={event =>
+                          onFilterMaxMileageChange(Number(event.target.value) || 0)
+                        }
+                      />
+                    </label>
+
+                    <label className="field compact">
+                      <span>Status</span>
+                      <select
+                        value={listingStatus}
+                        onChange={event =>
+                          onListingStatusChange(
+                            event.target.value as 'ALL' | Vehicle['status'],
+                          )
+                        }>
+                        <option value="ALL">All</option>
+                        <option value="LIVE">Live</option>
+                        <option value="RESERVED">Reserved</option>
+                        <option value="SOLD">Sold</option>
+                        <option value="DRAFT">Draft</option>
+                      </select>
+                    </label>
+
+                    <label className="field compact">
+                      <span>Budget {formatCurrency(maxListingPrice)} (incl. est. tax)</span>
+                      <input
+                        type="range"
+                        min="10000"
+                        max="90000"
+                        step="2500"
+                        value={maxListingPrice}
+                        onChange={event =>
+                          onMaxListingPriceChange(Number(event.target.value))
+                        }
+                      />
+                    </label>
+                  </section>
+                );
+              })()}
 
               <div className="chip-row">
                 {[
@@ -2180,12 +2336,32 @@ function renderMainPanel(args: {
           <ResourceBlock state={vehicleDetail}>
             {vehicleDetail.data ? (
               <div className="detail-layout">
-                <VehicleSummaryCard
-                  vehicle={vehicleDetail.data}
-                  large
-                  activeImage={detailActiveImage}
-                  onSelectImage={onDetailActiveImageChange}
-                />
+                <div>
+                  <VehicleSummaryCard
+                    vehicle={vehicleDetail.data}
+                    large
+                    activeImage={detailActiveImage}
+                    onSelectImage={onDetailActiveImageChange}
+                  />
+                  <button
+                    type="button"
+                    className="secondary-button gallery-open-button"
+                    onClick={() => {
+                      const data = vehicleDetail.data!;
+                      const gallery = getVehicleGallery(data);
+                      const start = Math.max(
+                        0,
+                        gallery.indexOf(detailActiveImage ?? gallery[0]),
+                      );
+                      onOpenLightbox(
+                        gallery,
+                        start,
+                        `${data.modelYear} ${data.make} ${data.model}`,
+                      );
+                    }}>
+                    View all photos ({getVehicleGallery(vehicleDetail.data).length})
+                  </button>
+                </div>
                 <div className="detail-stack">
                   <DetailRow label="VIN" value={vehicleDetail.data.vin} />
                   <DetailRow label="Dealer" value={vehicleDetail.data.dealerName} />
