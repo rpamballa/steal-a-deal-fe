@@ -7,6 +7,7 @@ import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
 import {DealScoreBadge} from './components/DealScoreBadge';
 import {GarageView} from './components/GarageView';
+import {AboutView, TermsView} from './components/SiteInfo';
 import {Lightbox} from './components/Lightbox';
 import {MatchQuiz} from './components/MatchQuiz';
 import {Pagination} from './components/Pagination';
@@ -102,7 +103,9 @@ type NavView =
   | 'deal-room'
   | 'deal-desk'
   | 'dealers'
-  | 'reporting';
+  | 'reporting'
+  | 'about'
+  | 'terms';
 
 
 const navItems: Array<{id: NavView; label: string; roles?: Array<CurrentUser['role']>}> = [
@@ -157,6 +160,8 @@ const NAV_VIEWS: NavView[] = [
   'deal-desk',
   'dealers',
   'reporting',
+  'about',
+  'terms',
 ];
 
 export default function App() {
@@ -272,12 +277,19 @@ export default function App() {
     return byRole;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRole, isGuest]);
+  // Footer-only informational pages are valid for every role even
+  // though they are not in the sidebar nav.
+  const STANDALONE_VIEWS: NavView[] = ['about', 'terms'];
   useEffect(() => {
-    if (!visibleNavItems.some(item => item.id === activeView)) {
+    if (
+      !STANDALONE_VIEWS.includes(activeView) &&
+      !visibleNavItems.some(item => item.id === activeView)
+    ) {
       setActiveView(
         visibleNavItems[0]?.id ?? (isGuest ? 'inventory' : 'overview'),
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, visibleNavItems, isGuest]);
 
   const requireAuth = useCallback(
@@ -2102,7 +2114,10 @@ export default function App() {
             </div>
           </section>
         </div>
-        <PlatformDisclaimer variant="footer" />
+        <PlatformDisclaimer
+          variant="footer"
+          onNavigate={view => setActiveView(view)}
+        />
       </main>
     </div>
     </>
@@ -4513,6 +4528,26 @@ function renderMainPanel(args: {
               <EmptyState message="No notifications found for this buyer reference." />
             )}
           </ResourceBlock>
+        </>
+      );
+    case 'about':
+      return (
+        <>
+          <PanelHeader
+            title="About StealADeal"
+            detail="Who we are and how the platform works."
+          />
+          <AboutView />
+        </>
+      );
+    case 'terms':
+      return (
+        <>
+          <PanelHeader
+            title="Terms & Conditions"
+            detail="The terms that govern use of the StealADeal platform."
+          />
+          <TermsView />
         </>
       );
     default:

@@ -3,6 +3,7 @@ import React from 'react';
 type Props = {
   dealerName?: string | null;
   variant?: 'footer' | 'inline';
+  onNavigate?: (view: 'about' | 'terms') => void;
 };
 
 /**
@@ -10,7 +11,11 @@ type Props = {
  * party to the vehicle sale. The licensed dealer is the seller.
  * Shown site-wide (footer) and on the transaction surface (inline).
  */
-export function PlatformDisclaimer({dealerName, variant = 'footer'}: Props) {
+export function PlatformDisclaimer({
+  dealerName,
+  variant = 'footer',
+  onNavigate,
+}: Props) {
   // Exact regulatory string mandated by Dev-Instruction §8.3.
   const dealer = dealerName?.trim() ? dealerName.trim() : 'the listing dealer';
   const mandated = `StealADeal is a technology platform. Vehicles are sold by ${dealer}, a licensed motor vehicle dealer. StealADeal is not a party to the sale.`;
@@ -38,6 +43,23 @@ export function PlatformDisclaimer({dealerName, variant = 'footer'}: Props) {
         are billed to dealers as a software service charge, not a sales
         commission.
       </p>
+      {onNavigate ? (
+        <p className="platform-disclaimer-links">
+          <button
+            type="button"
+            className="footer-link"
+            onClick={() => onNavigate('about')}>
+            About
+          </button>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            className="footer-link"
+            onClick={() => onNavigate('terms')}>
+            Terms &amp; Conditions
+          </button>
+        </p>
+      ) : null}
     </footer>
   );
 }
