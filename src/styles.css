@@ -3488,3 +3488,22 @@ html[data-theme='light'] .dealer-dash-qtile {
   background: #FFFFFF;
   border-color: #E2E8F0;
 }
+
+/* ── Dealer inventory: VIN add + CSV ──────────────────────────── */
+.dealer-inv-form-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.dealer-inv-vintoggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: #94A3B8;
+}
+.dealer-inv-vintoggle input { accent-color: #6366F1; }
+.dealer-inv-csv { margin-top: 1.25rem; }
+html[data-theme='light'] .dealer-inv-vintoggle { color: #475569; }

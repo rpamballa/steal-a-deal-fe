@@ -1,6 +1,11 @@
-import React from 'react';
+import React, {useRef, useState} from 'react';
 
-import {MAX_VEHICLE_PHOTOS, type Vehicle} from '../api';
+import {
+  MAX_VEHICLE_PHOTOS,
+  type InventoryUploadMode,
+  type InventoryUploadResponse,
+  type Vehicle,
+} from '../api';
 import {formatCurrency, formatLabel, formatMileage} from '../lib/format';
 
 type VehicleForm = {
@@ -27,6 +32,17 @@ type Props = {
   onCancelVehicleEdit: () => void;
   onStartVehicleEdit: (vehicle: Vehicle) => void;
   onToggleVehiclePublish: (vehicle: Vehicle) => Promise<void> | void;
+  pendingVin: boolean;
+  onCreateFromVin: () => Promise<void> | void;
+  pendingHistoryVehicleId: number | null;
+  onUploadHistory: (vehicleId: number, file: File) => Promise<void> | void;
+  inventoryUploadMode: InventoryUploadMode;
+  pendingInventoryUpload: boolean;
+  inventoryUploadMessage: string | null;
+  inventoryUploadResult: InventoryUploadResponse | null;
+  onInventoryUploadModeChange: (mode: InventoryUploadMode) => void;
+  onInventoryUploadFileChange: (file: File | null) => void;
+  onUploadDealerInventoryCsv: () => Promise<void> | void;
 };
 
 const STATUSES: Vehicle['status'][] = ['DRAFT', 'LIVE', 'RESERVED', 'SOLD'];
@@ -52,7 +68,20 @@ export function DealerInventoryView({
   onCancelVehicleEdit,
   onStartVehicleEdit,
   onToggleVehiclePublish,
+  pendingVin,
+  onCreateFromVin,
+  pendingHistoryVehicleId,
+  onUploadHistory,
+  inventoryUploadMode,
+  pendingInventoryUpload,
+  inventoryUploadMessage,
+  inventoryUploadResult,
+  onInventoryUploadModeChange,
+  onInventoryUploadFileChange,
+  onUploadDealerInventoryCsv,
 }: Props) {
+  const [vinMode, setVinMode] = useState(false);
+  const historyInputs = useRef<Record<number, HTMLInputElement | null>>({});
   const photoCount = vehicleForm.imageUrls
     .split(',')
     .map(v => v.trim())
@@ -62,9 +91,27 @@ export function DealerInventoryView({
   return (
     <div className="dealer-inv">
       <section className="dealer-inv-form panel">
-        <h3 className="panel-title">
-          {editingVehicleId ? 'Edit vehicle' : 'Add a vehicle'}
-        </h3>
+        <div className="dealer-inv-form-head">
+          <h3 className="panel-title">
+            {editingVehicleId ? 'Edit vehicle' : 'Add a vehicle'}
+          </h3>
+          {!editingVehicleId ? (
+            <label className="dealer-inv-vintoggle">
+              <input
+                type="checkbox"
+                checked={vinMode}
+                onChange={e => setVinMode(e.target.checked)}
+              />
+              <span>Decode from VIN (auto-fills year/make/model/trim)</span>
+            </label>
+          ) : null}
+        </div>
+        {vinMode && !editingVehicleId ? (
+          <p className="field-hint">
+            Enter the VIN, mileage, price, and status — leave year/make/
+            model/trim blank to let the VIN fill them in.
+          </p>
+        ) : null}
         <div className="dealer-inv-grid">
           {FIELDS.map(f => (
             <label key={f.key} className="field">
@@ -112,15 +159,26 @@ export function DealerInventoryView({
           <button
             type="button"
             className="primary-button"
-            disabled={pendingVehicleSave || photosOver}
+            disabled={
+              (vinMode && !editingVehicleId ? pendingVin : pendingVehicleSave) ||
+              photosOver
+            }
             onClick={() => {
-              Promise.resolve(onSaveVehicle()).catch(() => {});
+              const action =
+                vinMode && !editingVehicleId
+                  ? onCreateFromVin()
+                  : onSaveVehicle();
+              Promise.resolve(action).catch(() => {});
             }}>
-            {pendingVehicleSave
-              ? 'Saving…'
-              : editingVehicleId
-                ? 'Save changes'
-                : 'Add vehicle'}
+            {vinMode && !editingVehicleId
+              ? pendingVin
+                ? 'Decoding…'
+                : 'Add by VIN'
+              : pendingVehicleSave
+                ? 'Saving…'
+                : editingVehicleId
+                  ? 'Save changes'
+                  : 'Add vehicle'}
           </button>
           {editingVehicleId ? (
             <button
@@ -131,6 +189,59 @@ export function DealerInventoryView({
             </button>
           ) : null}
         </div>
+      </section>
+
+      <section className="dealer-inv-csv panel">
+        <h3 className="panel-title">Bulk upload (CSV)</h3>
+        <p className="field-hint">
+          Columns: vin, modelYear, make, model, trim, mileage, price,
+          status, imageUrls (semicolon-separated).
+        </p>
+        <div className="inline-actions">
+          <label className="field">
+            <span>Mode</span>
+            <select
+              value={inventoryUploadMode}
+              onChange={e =>
+                onInventoryUploadModeChange(
+                  e.target.value as InventoryUploadMode,
+                )
+              }>
+              <option value="CREATE_ONLY">Create only</option>
+              <option value="UPSERT">Upsert (update existing VINs)</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>CSV file</span>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={e =>
+                onInventoryUploadFileChange(e.target.files?.[0] ?? null)
+              }
+            />
+          </label>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={pendingInventoryUpload}
+            onClick={() => {
+              Promise.resolve(onUploadDealerInventoryCsv()).catch(() => {});
+            }}>
+            {pendingInventoryUpload ? 'Uploading…' : 'Upload CSV'}
+          </button>
+        </div>
+        {inventoryUploadMessage ? (
+          <p className="field-hint">{inventoryUploadMessage}</p>
+        ) : null}
+        {inventoryUploadResult ? (
+          <p className="field-hint">
+            {inventoryUploadResult.createdCount} created ·{' '}
+            {inventoryUploadResult.updatedCount} updated ·{' '}
+            {inventoryUploadResult.rejectedCount} rejected of{' '}
+            {inventoryUploadResult.totalRows} rows.
+          </p>
+        ) : null}
       </section>
 
       <section className="dealer-inv-list">
@@ -200,6 +311,34 @@ export function DealerInventoryView({
                                   : 'Publish'}
                             </button>
                           )}
+                          <input
+                            ref={el => {
+                              historyInputs.current[v.id] = el;
+                            }}
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            style={{display: 'none'}}
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                Promise.resolve(
+                                  onUploadHistory(v.id, file),
+                                ).catch(() => {});
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="ghost-button compact-button"
+                            disabled={pendingHistoryVehicleId === v.id}
+                            onClick={() =>
+                              historyInputs.current[v.id]?.click()
+                            }>
+                            {pendingHistoryVehicleId === v.id
+                              ? 'Uploading…'
+                              : 'History PDF'}
+                          </button>
                         </div>
                       </td>
                     </tr>

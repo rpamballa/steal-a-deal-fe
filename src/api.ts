@@ -144,6 +144,19 @@ export type CreateVehicleRequest = {
   status: VehicleStatus;
 };
 
+// VIN add: backend enriches missing year/make/model/trim from the VIN.
+export type VinCreateRequest = {
+  vin: string;
+  modelYear?: number | null;
+  make?: string | null;
+  model?: string | null;
+  trim?: string | null;
+  imageUrls: string[];
+  mileage: number;
+  price: number;
+  status: VehicleStatus;
+};
+
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CLOSED';
 
 export type Lead = {
@@ -1225,6 +1238,11 @@ export const api = {
       {method: 'POST', body: form},
     );
   },
+  createVehicleFromVin: (dealerId: number, payload: VinCreateRequest) =>
+    request<Vehicle>(`/api/dealers/${dealerId}/inventory/vin`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
 
 /** Public URL to a vehicle's full history report PDF (streamed). */

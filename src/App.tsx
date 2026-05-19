@@ -1611,6 +1611,86 @@ export default function App() {
     }
   }, [editingVehicleId, liveVehicles, resetVehicleForm, vehicleForm, vehicles]);
 
+  const [pendingVin, setPendingVin] = useState(false);
+  const createVehicleFromVin = useCallback(async () => {
+    const dealerId =
+      currentUser.data?.role === 'DEALER'
+        ? currentUser.data.dealerId
+        : Number(vehicleForm.dealerId);
+    if (!dealerId || !Number.isFinite(dealerId)) {
+      toast.error('A dealership is required to add a vehicle.');
+      return;
+    }
+    const vin = vehicleForm.vin.trim().toUpperCase();
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+      toast.error('Enter a valid 17-character VIN.');
+      return;
+    }
+    const imageUrls = vehicleForm.imageUrls
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (imageUrls.length > MAX_VEHICLE_PHOTOS) {
+      toast.error(`A listing can have at most ${MAX_VEHICLE_PHOTOS} photos.`);
+      return;
+    }
+    setPendingVin(true);
+    try {
+      const v = await api.createVehicleFromVin(dealerId, {
+        vin,
+        modelYear: vehicleForm.modelYear
+          ? Number(vehicleForm.modelYear)
+          : null,
+        make: vehicleForm.make.trim() || null,
+        model: vehicleForm.model.trim() || null,
+        trim: vehicleForm.trim.trim() || null,
+        imageUrls,
+        mileage: Number(vehicleForm.mileage) || 0,
+        price: Number(vehicleForm.price) || 0,
+        status: vehicleForm.status,
+      });
+      await Promise.all([vehicles.refresh(), liveVehicles.refresh()]);
+      toast.success(
+        `Added ${v.modelYear} ${v.make} ${v.model} (decoded from VIN).`,
+      );
+      resetVehicleForm();
+    } catch (error) {
+      toast.error(toUserMessage(error));
+    } finally {
+      setPendingVin(false);
+    }
+  }, [currentUser.data, vehicleForm, vehicles, liveVehicles, resetVehicleForm]);
+
+  const [pendingHistoryVehicleId, setPendingHistoryVehicleId] = useState<
+    number | null
+  >(null);
+  const uploadVehicleHistoryFile = useCallback(
+    async (vehicleId: number, file: File) => {
+      const dealerId =
+        currentUser.data?.role === 'DEALER'
+          ? currentUser.data.dealerId
+          : null;
+      const targetDealer =
+        dealerId ??
+        (vehicles.data ?? []).find(v => v.id === vehicleId)?.dealerId ??
+        null;
+      if (!targetDealer) {
+        toast.error('Could not resolve the dealership for this vehicle.');
+        return;
+      }
+      setPendingHistoryVehicleId(vehicleId);
+      try {
+        await api.uploadVehicleHistory(targetDealer, vehicleId, file);
+        toast.success('History report uploaded.');
+      } catch (error) {
+        toast.error(toUserMessage(error));
+      } finally {
+        setPendingHistoryVehicleId(null);
+      }
+    },
+    [currentUser.data, vehicles.data],
+  );
+
   const [pendingVehiclePublishId, setPendingVehiclePublishId] = useState<
     number | null
   >(null);
@@ -2101,6 +2181,10 @@ export default function App() {
               },
               onStartVehicleEdit: startVehicleEdit,
               onToggleVehiclePublish: toggleVehiclePublish,
+              onCreateVehicleFromVin: createVehicleFromVin,
+              pendingVin,
+              onUploadVehicleHistoryFile: uploadVehicleHistoryFile,
+              pendingHistoryVehicleId,
               pendingVehiclePublishId,
               onCancelVehicleEdit: resetVehicleForm,
               onSaveVehicle: saveVehicle,
@@ -2393,6 +2477,13 @@ function renderMainPanel(args: {
   ) => void;
   onStartVehicleEdit: (vehicle: Vehicle) => void;
   onToggleVehiclePublish: (vehicle: Vehicle) => Promise<void>;
+  onCreateVehicleFromVin: () => Promise<void>;
+  pendingVin: boolean;
+  onUploadVehicleHistoryFile: (
+    vehicleId: number,
+    file: File,
+  ) => Promise<void>;
+  pendingHistoryVehicleId: number | null;
   pendingVehiclePublishId: number | null;
   onCancelVehicleEdit: () => void;
   onSaveVehicle: () => Promise<void>;
@@ -2540,6 +2631,10 @@ function renderMainPanel(args: {
     onVehicleFormChange,
     onStartVehicleEdit,
     onToggleVehiclePublish,
+    onCreateVehicleFromVin,
+    pendingVin,
+    onUploadVehicleHistoryFile,
+    pendingHistoryVehicleId,
     pendingVehiclePublishId,
     onCancelVehicleEdit,
     onSaveVehicle,
@@ -2678,6 +2773,17 @@ function renderMainPanel(args: {
                 onCancelVehicleEdit={onCancelVehicleEdit}
                 onStartVehicleEdit={onStartVehicleEdit}
                 onToggleVehiclePublish={onToggleVehiclePublish}
+                pendingVin={pendingVin}
+                onCreateFromVin={onCreateVehicleFromVin}
+                pendingHistoryVehicleId={pendingHistoryVehicleId}
+                onUploadHistory={onUploadVehicleHistoryFile}
+                inventoryUploadMode={inventoryUploadMode}
+                pendingInventoryUpload={pendingInventoryUpload}
+                inventoryUploadMessage={inventoryUploadMessage}
+                inventoryUploadResult={inventoryUploadResult}
+                onInventoryUploadModeChange={onInventoryUploadModeChange}
+                onInventoryUploadFileChange={onInventoryUploadFileChange}
+                onUploadDealerInventoryCsv={onUploadDealerInventoryCsv}
               />
             </ResourceBlock>
           </>
