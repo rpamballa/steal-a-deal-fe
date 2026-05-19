@@ -259,6 +259,93 @@ export type DocumentType =
   | 'ODOMETER_DISCLOSURE'
   | 'AS_IS_DISCLOSURE';
 
+export type PlatformFee = {
+  dealId: number;
+  vehiclePrice: number;
+  feeRate: number;
+  feeAmount: number;
+  settled: boolean;
+  chargeId: string | null;
+  settledAt: string | null;
+};
+
+export type FAndIProductType =
+  | 'EXTENDED_WARRANTY'
+  | 'GAP_INSURANCE'
+  | 'TIRE_AND_WHEEL'
+  | 'PREPAID_MAINTENANCE'
+  | 'APPEARANCE_PROTECTION';
+
+export type FAndIProduct = {
+  id: number;
+  type: FAndIProductType;
+  name: string;
+  retailPrice: number;
+  revenueShareRate: number;
+  active: boolean;
+};
+
+export type CreateFAndIProductRequest = {
+  type: FAndIProductType;
+  name: string;
+  retailPrice: number;
+  revenueShareRate: number;
+};
+
+export type FAndIAttachment = {
+  id: number;
+  dealId: number;
+  productId: number;
+  productName: string;
+  type: FAndIProductType;
+  price: number;
+  revenueShareRate: number;
+  revenueShareAmount: number;
+  createdAt: string;
+};
+
+export type FAndISummary = {
+  dealId: number;
+  totalRetail: number;
+  totalPlatformRevenue: number;
+  items: FAndIAttachment[];
+};
+
+export type AuditEvent = {
+  id: number;
+  actorType: string;
+  actorReference: string;
+  action: string;
+  entityType: string;
+  entityId: number | null;
+  dealId: number | null;
+  detail: string | null;
+  createdAt: string;
+};
+
+export type DealerInventoryFeed = {
+  dealerId: number;
+  feedUrl: string;
+  mode: string;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncDetail: string | null;
+};
+
+export type ConfigureFeedRequest = {
+  feedUrl: string;
+  mode: string;
+  enabled: boolean;
+};
+
+export type FeedSyncResult = {
+  totalRows: number;
+  createdCount: number;
+  updatedCount: number;
+  rejectedCount: number;
+};
+
 export type HistoryReportSource = 'PROVIDER' | 'DEALER_UPLOAD';
 
 export type VehicleHistorySummary = {
@@ -1243,6 +1330,75 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  // ── Regulatory disclosure generation (deal room) ────────────
+  generateOdometerDisclosure: (dealId: number) =>
+    request<DealDocument>(
+      `/api/deals/${dealId}/documents/odometer/generate`,
+      {method: 'POST'},
+    ),
+  generateAsIsDisclosure: (dealId: number) =>
+    request<DealDocument>(
+      `/api/deals/${dealId}/documents/as-is/generate`,
+      {method: 'POST'},
+    ),
+
+  // ── Platform transaction fee (read-only) ────────────────────
+  getDealPlatformFee: (dealId: number) =>
+    request<PlatformFee>(`/api/deals/${dealId}/platform-fee`),
+
+  // ── F&I products + per-deal attachments ─────────────────────
+  listFAndIProducts: (activeOnly = true) =>
+    request<FAndIProduct[]>(
+      `/api/fni/products?activeOnly=${activeOnly}`,
+    ),
+  createFAndIProduct: (payload: CreateFAndIProductRequest) =>
+    request<FAndIProduct>('/api/fni/products', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  setFAndIProductActive: (productId: number, active: boolean) =>
+    request<FAndIProduct>(`/api/fni/products/${productId}/active`, {
+      method: 'PATCH',
+      body: JSON.stringify({active}),
+    }),
+  getDealFAndI: (dealId: number) =>
+    request<FAndISummary>(`/api/deals/${dealId}/fni`),
+  attachFAndI: (dealId: number, productId: number) =>
+    request<FAndIAttachment>(`/api/deals/${dealId}/fni`, {
+      method: 'POST',
+      body: JSON.stringify({productId}),
+    }),
+  removeFAndI: (dealId: number, attachmentId: number) =>
+    request<void>(`/api/deals/${dealId}/fni/${attachmentId}`, {
+      method: 'DELETE',
+    }),
+
+  // ── Admin: audit trail ──────────────────────────────────────
+  listAuditEvents: (query?: {
+    dealId?: number;
+    actorReference?: string;
+    limit?: number;
+  }) => request<AuditEvent[]>(`/api/audit${toQueryString(query)}`),
+
+  // ── Dealer: automated inventory feed ────────────────────────
+  getInventoryFeed: (dealerId: number) =>
+    request<DealerInventoryFeed>(
+      `/api/dealers/${dealerId}/inventory/feed`,
+    ),
+  configureInventoryFeed: (
+    dealerId: number,
+    payload: ConfigureFeedRequest,
+  ) =>
+    request<DealerInventoryFeed>(
+      `/api/dealers/${dealerId}/inventory/feed`,
+      {method: 'PUT', body: JSON.stringify(payload)},
+    ),
+  syncInventoryFeed: (dealerId: number) =>
+    request<FeedSyncResult>(
+      `/api/dealers/${dealerId}/inventory/feed/sync`,
+      {method: 'POST'},
+    ),
 };
 
 /** Public URL to a vehicle's full history report PDF (streamed). */

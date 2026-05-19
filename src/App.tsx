@@ -6,7 +6,11 @@ import {onUrlPop, readUrlState, writeUrlState} from './lib/urlState';
 import {AuthScreen} from './components/AuthScreen';
 import {ConfirmDialog} from './components/ConfirmDialog';
 import {DealScoreBadge} from './components/DealScoreBadge';
+import {AdminAudit} from './components/AdminAudit';
+import {AdminFAndIProducts} from './components/AdminFAndIProducts';
+import {DealFAndIPanel} from './components/DealFAndIPanel';
 import {DealerInventoryView} from './components/DealerInventoryView';
+import {InventoryFeedPanel} from './components/InventoryFeedPanel';
 import {DealerProfileView} from './components/DealerProfileView';
 import {GarageView} from './components/GarageView';
 import {
@@ -115,6 +119,8 @@ type NavView =
   | 'deal-desk'
   | 'dealers'
   | 'reporting'
+  | 'fni-catalog'
+  | 'audit'
   | 'about'
   | 'terms'
   | 'privacy'
@@ -135,6 +141,8 @@ const navItems: Array<{id: NavView; label: string; roles?: Array<CurrentUser['ro
   {id: 'appointments', label: 'Appointments', roles: ['DEALER', 'ADMIN']},
   {id: 'dealers', label: 'Dealers', roles: ['ADMIN']},
   {id: 'reporting', label: 'Reporting', roles: ['DEALER', 'ADMIN']},
+  {id: 'fni-catalog', label: 'F&I Catalog', roles: ['ADMIN']},
+  {id: 'audit', label: 'Audit', roles: ['ADMIN']},
 ];
 
 const dealStages: DealStage[] = [
@@ -175,6 +183,8 @@ const NAV_VIEWS: NavView[] = [
   'deal-desk',
   'dealers',
   'reporting',
+  'fni-catalog',
+  'audit',
   'about',
   'terms',
   'privacy',
@@ -2786,6 +2796,9 @@ function renderMainPanel(args: {
                 onUploadDealerInventoryCsv={onUploadDealerInventoryCsv}
               />
             </ResourceBlock>
+            {myDealerId != null ? (
+              <InventoryFeedPanel dealerId={myDealerId} />
+            ) : null}
           </>
         );
       }
@@ -3568,6 +3581,19 @@ function renderMainPanel(args: {
                     </button>
                   ) : null}
                 </div>
+              </div>
+
+              <div className="panel-subsection">
+                <DealFAndIPanel
+                  dealId={selectedDeal.id}
+                  canManage={
+                    currentUser.data?.role === 'DEALER' ||
+                    currentUser.data?.role === 'ADMIN'
+                  }
+                  onDocsChanged={() => {
+                    dealDocuments.refresh().catch(() => {});
+                  }}
+                />
               </div>
 
               <div className="panel-subsection">
@@ -4921,6 +4947,26 @@ function renderMainPanel(args: {
               <EmptyState message="No notifications found for this buyer reference." />
             )}
           </ResourceBlock>
+        </>
+      );
+    case 'fni-catalog':
+      return (
+        <>
+          <PanelHeader
+            title="F&I product catalog"
+            detail="Manage the warranty, GAP, and protection products dealers can attach to deals."
+          />
+          <AdminFAndIProducts />
+        </>
+      );
+    case 'audit':
+      return (
+        <>
+          <PanelHeader
+            title="Audit trail"
+            detail="Append-only log of high-value actions across the platform."
+          />
+          <AdminAudit />
         </>
       );
     case 'dealer-profile':
