@@ -16,6 +16,7 @@ import {GarageView} from './components/GarageView';
 import {
   AboutView,
   ContactView,
+  DealerTermsView,
   FaqView,
   PrivacyView,
   TermsView,
@@ -123,6 +124,7 @@ type NavView =
   | 'audit'
   | 'about'
   | 'terms'
+  | 'dealer-terms'
   | 'privacy'
   | 'faq'
   | 'contact'
@@ -187,6 +189,7 @@ const NAV_VIEWS: NavView[] = [
   'audit',
   'about',
   'terms',
+  'dealer-terms',
   'privacy',
   'faq',
   'contact',
@@ -312,6 +315,7 @@ export default function App() {
   const STANDALONE_VIEWS: NavView[] = [
     'about',
     'terms',
+    'dealer-terms',
     'privacy',
     'faq',
     'contact',
@@ -5011,6 +5015,16 @@ function renderMainPanel(args: {
             detail="The terms that govern use of the StealADeal platform."
           />
           <TermsView onNavigate={onNavigate} />
+        </>
+      );
+    case 'dealer-terms':
+      return (
+        <>
+          <PanelHeader
+            title="Dealer Subscription Agreement"
+            detail="The master agreement between StealADeal and a participating dealer."
+          />
+          <DealerTermsView />
         </>
       );
     case 'privacy':

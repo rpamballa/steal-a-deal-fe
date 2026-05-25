@@ -4,7 +4,7 @@ type Props = {
   dealerName?: string | null;
   variant?: 'footer' | 'inline';
   onNavigate?: (
-    view: 'about' | 'terms' | 'privacy' | 'faq' | 'contact',
+    view: 'about' | 'terms' | 'dealer-terms' | 'privacy' | 'faq' | 'contact',
   ) => void;
 };
 
@@ -53,6 +53,7 @@ export function PlatformDisclaimer({
               ['faq', 'Help & FAQ'],
               ['contact', 'Contact'],
               ['terms', 'Terms'],
+              ['dealer-terms', 'Dealer Agreement'],
               ['privacy', 'Privacy'],
             ] as const
           ).map(([view, label], i) => (

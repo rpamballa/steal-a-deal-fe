@@ -3533,3 +3533,10 @@ html[data-theme='light'] .fni-row {
 }
 html[data-theme='light'] .fni-meta { color: #475569; }
 html[data-theme='light'] .fni-price { color: #B45309; }
+
+.info-sub {
+  margin: 0 0 0.75rem;
+  color: #94A3B8;
+  font-size: 0.95rem;
+}
+html[data-theme='light'] .info-sub { color: #475569; }
